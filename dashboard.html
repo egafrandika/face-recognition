@@ -2,44 +2,246 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Absensi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Karyawan - PayrollFace</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
-    <nav>
-        <div class="logo">PayrollFace</div>
-        <ul>
-            <li><a href="dashboard.html">Absensi</a></li>
-            <li><a href="rekap_kehadiran.html">Rekap</a></li>
-            <li><a href="pengajuan_cuti.html">Cuti</a></li>
-            <li id="menu-slip" class="nav-hidden"><a href="slip_gaji.html">Slip Gaji</a></li>
-            <li><a href="index.html" onclick="localStorage.removeItem('hasAbsen')">Keluar</a></li>
-        </ul>
-    </nav>
-
-    <div class="container">
-        <div class="card" style="text-align: center; max-width: 550px;">
-            <h2 style="margin-bottom: 20px;">Presensi Biometrik</h2>
-            <div class="form-group">
-                <select id="absensi_type">
-                    <option value="Masuk">Absensi Masuk</option>
-                    <option value="Pulang">Absensi Pulang (Keluar)</option>
-                </select>
+    <div class="app-container">
+        <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo"><i class="fas fa-fingerprint"></i> PayrollFace</div>
+                <div class="user-info" id="sidebar-user">Karyawan</div>
             </div>
-            <p id="camera-hint" style="font-size: 0.9rem; color: #3498db; margin-bottom: 8px;">Menghubungkan kamera...</p>
-            <video id="video" autoplay muted playsinline style="width: 100%; border-radius: 10px; background: black; margin-bottom: 15px;"></video>
-            <button id="btn-scan" class="btn-scan btn-block">Mulai Verifikasi Wajah</button>
-            <h3 id="status" style="margin-top:20px; color: #7f8c8d;">Status: Siap memindai...</h3>
-        </div>
+            <nav class="sidebar-nav">
+                <a data-section="attendance" class="active" onclick="showSection('attendance',this)"><i class="fas fa-camera"></i> Absensi</a>
+                <a data-section="history" onclick="showSection('history',this)"><i class="fas fa-history"></i> Riwayat Kehadiran</a>
+                <a data-section="leave" onclick="showSection('leave',this)"><i class="fas fa-calendar-alt"></i> Pengajuan Cuti</a>
+                <a data-section="payslip" onclick="showSection('payslip',this)"><i class="fas fa-file-invoice-dollar"></i> Slip Gaji</a>
+                <div class="nav-divider"></div>
+                <a href="login.html" onclick="localStorage.clear()"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <button class="mobile-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                    <h1 id="page-title">Absensi</h1>
+                </div>
+                <div class="user-badge"><i class="fas fa-user"></i> <span id="topbar-name">Karyawan</span></div>
+            </header>
+
+            <div class="content">
+                <!-- ═══ ABSENSI ═══ -->
+                <section id="section-attendance" class="section active">
+                    <div class="card" style="max-width:600px;margin:0 auto;text-align:center;">
+                        <div class="card-header" style="justify-content:center;"><h2><i class="fas fa-camera"></i> Presensi Biometrik</h2></div>
+                        <div class="form-group" style="max-width:260px;margin:0 auto 16px;">
+                            <select id="absensi-type"><option value="Masuk">Absensi Masuk</option><option value="Pulang">Absensi Pulang</option></select>
+                        </div>
+                        <div class="camera-container" style="margin:0 auto;"><video id="emp-video" autoplay muted playsinline></video><div class="face-frame"></div></div>
+                        <p class="camera-hint" id="emp-cam-hint">Menghubungkan kamera...</p>
+                        <button class="btn btn-primary btn-lg" style="margin-top:16px;" onclick="doAbsensi()"><i class="fas fa-fingerprint"></i> Verifikasi Wajah</button>
+                        <p id="absensi-status" style="margin-top:14px;font-weight:600;min-height:24px;"></p>
+                    </div>
+                </section>
+
+                <!-- ═══ RIWAYAT KEHADIRAN ═══ -->
+                <section id="section-history" class="section">
+                    <div class="card">
+                        <div class="card-header"><h2><i class="fas fa-history"></i> Riwayat Kehadiran</h2></div>
+                        <div id="history-user-info" style="margin-bottom:10px;"></div>
+                        <p style="color:var(--text-light);font-size:0.82rem;margin-bottom:14px;">Jam kerja: <b>09:00</b> - <b>17:00</b> | Lembur per jam penuh setelah 17:00</p>
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>Tanggal</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th><th>Ket.</th></tr></thead>
+                                <tbody id="history-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══ CUTI ═══ -->
+                <section id="section-leave" class="section">
+                    <div class="card">
+                        <div class="card-header"><h2><i class="fas fa-calendar-alt"></i> Formulir Pengajuan Cuti</h2></div>
+                        <div class="form-group"><label>Jenis Cuti</label><select id="jenis_cuti" onchange="toggleSurat()"><option value="Cuti Tahunan">Cuti Tahunan</option><option value="Cuti Sakit">Cuti Sakit</option><option value="Kepentingan Mendesak">Kepentingan Mendesak</option></select></div>
+                        <div id="upload-section" class="form-group" style="display:none;background:#fef2f2;padding:14px;border-radius:8px;border:1px dashed var(--danger);"><label style="color:var(--danger);">Upload Surat Dokter (Wajib)</label><input type="file" id="surat_dokter" accept="image/*,application/pdf"></div>
+                        <div class="form-group"><label>Tanggal Mulai</label><input type="date" id="tgl_mulai"></div>
+                        <div class="form-group"><label>Alasan Cuti</label><textarea id="alasan" placeholder="Tuliskan alasan..."></textarea></div>
+                        <button class="btn btn-primary btn-block" onclick="submitCuti()"><i class="fas fa-paper-plane"></i> Kirim Pengajuan</button>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h2><i class="fas fa-list-alt"></i> Riwayat Pengajuan</h2></div>
+                        <div class="table-wrap">
+                            <table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="my-leave-body"></tbody></table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ═══ SLIP GAJI ═══ -->
+                <section id="section-payslip" class="section">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-file-invoice-dollar"></i> Slip Gaji Bulanan</h2>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <input type="month" id="payslip-month" style="width:auto;">
+                                <button class="btn btn-primary btn-sm" onclick="loadPayslip()"><i class="fas fa-search"></i> Tampilkan</button>
+                            </div>
+                        </div>
+                        <div id="payslip-content" style="color:var(--text-light);text-align:center;padding:30px 0;">Pilih bulan lalu klik <b>Tampilkan</b>.</div>
+                        <div id="payslip-actions" style="display:none;margin-top:16px;gap:10px;flex-wrap:wrap;">
+                            <button class="btn btn-primary no-print" onclick="window.print()"><i class="fas fa-print"></i> Cetak</button>
+                            <button class="btn btn-outline no-print" onclick="openSlipPage()"><i class="fas fa-download"></i> Download / Halaman Cetak</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
     </div>
 
     <script src="camera.js"></script>
     <script>
-        initCamera('video', 'camera-hint');
-        document.getElementById('btn-scan').onclick = () => {
-            const type = document.getElementById('absensi_type').value;
-            simulateVerification('status', type);
-        };
+        const user = JSON.parse(localStorage.getItem('payrollface_user') || 'null');
+        if (!user || user.role !== 'karyawan') { window.location.href = 'login.html'; }
+        document.getElementById('sidebar-user').textContent = user ? user.nama : '';
+        document.getElementById('topbar-name').textContent = user ? user.nama : '';
+
+        const now = new Date();
+        document.getElementById('payslip-month').value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+        const titles = { attendance: 'Absensi', history: 'Riwayat Kehadiran', leave: 'Pengajuan Cuti', payslip: 'Slip Gaji' };
+
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-backdrop').classList.toggle('active'); }
+        function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-backdrop').classList.remove('active'); }
+
+        function showSection(name, el) {
+            stopCamera('emp-video');
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById('section-' + name).classList.add('active');
+            document.querySelectorAll('.sidebar-nav a[data-section]').forEach(a => a.classList.remove('active'));
+            if (el) el.classList.add('active');
+            document.getElementById('page-title').textContent = titles[name] || '';
+            closeSidebar();
+
+            if (name === 'attendance') initCamera('emp-video', 'emp-cam-hint');
+            if (name === 'history') loadHistory();
+            if (name === 'leave') loadMyLeaves();
+            if (name === 'payslip') loadPayslip();
+        }
+
+        const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+
+        function getLocation() {
+            return new Promise(resolve => {
+                if (!navigator.geolocation) { resolve({}); return; }
+                navigator.geolocation.getCurrentPosition(
+                    p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+                    () => resolve({}),
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            });
+        }
+
+        function locCell(lat, lng) {
+            if (!lat && !lng) return '<span style="color:var(--grey);font-size:0.78rem;">-</span>';
+            return '<a class="loc-link" href="https://www.google.com/maps?q=' + lat + ',' + lng + '" target="_blank"><i class="fas fa-map-marker-alt"></i> Lihat</a>';
+        }
+
+        // ─── ABSENSI ───
+        async function doAbsensi() {
+            const status = document.getElementById('absensi-status');
+            const type = document.getElementById('absensi-type').value;
+            status.textContent = 'Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
+
+            const [img, loc] = await Promise.all([getImageDataUrlAsync('emp-video'), getLocation()]);
+            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; return; }
+
+            try {
+                const res = await fetch('/api/v1/verify-liveness', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: img, type, user_id: user.id, latitude: loc.latitude || null, longitude: loc.longitude || null }) });
+                const r = await res.json(); status.textContent = r.message; status.style.color = r.status === 'success' ? '#10b981' : '#ef4444';
+            } catch (e) { status.textContent = 'Server offline!'; status.style.color = '#ef4444'; }
+        }
+
+        // ─── RIWAYAT KEHADIRAN ───
+        const JAM_IN = '09:00', JAM_OUT = '17:00';
+        function toMin(t) { const p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); }
+        function fmtDur(m) { const h = Math.floor(m / 60), mm = m % 60; return h > 0 ? (mm > 0 ? h + 'j ' + mm + 'm' : h + ' jam') : mm + ' menit'; }
+
+        function keterangan(masuk, keluar) {
+            const n = [];
+            if (masuk) { const m = toMin(masuk), s = toMin(JAM_IN); n.push(m > s ? '<span style="color:#ef4444;">Terlambat ' + fmtDur(m - s) + '</span>' : '<span style="color:#10b981;">Tepat waktu</span>'); }
+            if (keluar) { const k = toMin(keluar), s = toMin(JAM_OUT); if (k > s) n.push('<span style="color:#3b82f6;">Lembur ' + fmtDur(k - s) + '</span>'); else if (k < s) n.push('<span style="color:#f59e0b;">Pulang cepat ' + fmtDur(s - k) + '</span>'); }
+            else n.push('<span style="color:var(--grey);">Belum pulang</span>');
+            return n.join('<br>');
+        }
+
+        async function loadHistory() {
+            const tbody = document.getElementById('history-table-body');
+            const info = document.getElementById('history-user-info');
+            try {
+                const res = await fetch('/api/v1/employee/data/' + user.id); const data = await res.json();
+                if (data.user) info.innerHTML = '<b>Nama:</b> ' + data.user.nama + ' | <b>NIK:</b> ' + data.user.nik;
+                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada data.</td></tr>'; return; }
+                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + 'j</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td><td>' + keterangan(l.jam_masuk, l.jam_keluar) + '</td></tr>').join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+        }
+
+        // ─── CUTI ───
+        function toggleSurat() { document.getElementById('upload-section').style.display = document.getElementById('jenis_cuti').value === 'Cuti Sakit' ? 'block' : 'none'; }
+        const toBase64 = file => new Promise((res, rej) => { const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result); r.onerror = rej; });
+
+        async function submitCuti() {
+            const tgl = document.getElementById('tgl_mulai').value, als = document.getElementById('alasan').value, jenis = document.getElementById('jenis_cuti').value;
+            if (!tgl || !als) { alert('Lengkapi tanggal dan alasan!'); return; }
+            let attachment = null;
+            if (jenis === 'Cuti Sakit') { const f = document.getElementById('surat_dokter'); if (f.files.length === 0) { alert('Wajib upload surat dokter!'); return; } attachment = await toBase64(f.files[0]); }
+            try {
+                const res = await fetch('/api/v1/leave/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: user.id, jenis, tanggal: tgl, alasan: als, attachment }) });
+                const r = await res.json(); alert(r.message); if (r.status === 'success') loadMyLeaves();
+            } catch (e) { alert('Server offline!'); }
+        }
+
+        async function loadMyLeaves() {
+            const tbody = document.getElementById('my-leave-body');
+            try {
+                const res = await fetch('/api/v1/leave/my/' + user.id); const data = await res.json();
+                if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan.</td></tr>'; return; }
+                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.tanggal + '</td><td>' + c.jenis_cuti + '</td><td><small>' + (c.alasan || '-') + '</small></td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td>' + (c.status === 'Pending' ? '<button class="btn btn-danger btn-sm" onclick="cancelCuti(' + c.id + ')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+        }
+
+        async function cancelCuti(id) {
+            if (!confirm('Yakin?')) return;
+            try { await fetch('/api/v1/leave/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leave_id: id }) }); loadMyLeaves(); } catch (e) { alert('Gagal.'); }
+        }
+
+        // ─── SLIP GAJI ───
+        async function loadPayslip() {
+            const month = document.getElementById('payslip-month').value;
+            const el = document.getElementById('payslip-content');
+            const actions = document.getElementById('payslip-actions');
+            if (!month) { alert('Pilih bulan.'); return; }
+            el.innerHTML = '<p style="color:var(--text-light);">Memuat...</p>';
+            try {
+                const res = await fetch('/api/v1/payroll/' + user.id + '?month=' + month); const d = await res.json();
+                if (!d.user) { el.innerHTML = '<p>Data tidak ditemukan.</p>'; actions.style.display = 'none'; return; }
+                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIK:</b> ' + d.user.nik + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Kehadiran (' + d.total_days + 'hr &times; ' + rp(d.user.daily_rate) + ')</td><td style="text-align:right;">' + rp(d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(d.user.overtime_rate) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>TOTAL DITERIMA</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.grand_total) + '</td></tr></tbody></table></div></div>';
+                actions.style.display = 'flex';
+            } catch (e) { el.innerHTML = '<p style="color:var(--danger);">Gagal memuat data.</p>'; actions.style.display = 'none'; }
+        }
+
+        function openSlipPage() {
+            const month = document.getElementById('payslip-month').value;
+            window.open('slip_gaji.html?user_id=' + user.id + '&month=' + month, '_blank');
+        }
+
+        // ─── INIT ───
+        initCamera('emp-video', 'emp-cam-hint');
     </script>
 </body>
 </html>

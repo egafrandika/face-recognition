@@ -2,24 +2,141 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - PayrollFace</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
-<body style="display: flex; align-items: center; justify-content: center; height: 100vh;">
-    <div class="card" style="width: 100%; max-width: 400px; text-align: center;">
-        <h2 style="margin-bottom: 30px;">Login Sistem</h2>
-        <div style="margin-bottom: 20px;">
-            <p style="margin-bottom: 15px; color: #666;">Pilih Akses Simulasi:</p>
-            
-            <a href="admin.html" class="btn-scan btn-block" style="background: #27ae60; margin-bottom: 10px;">
-                Masuk sebagai Admin HRD
-            </a>
-            
-            <a href="dashboard.html" class="btn-scan btn-block">
-                Masuk sebagai Karyawan
-            </a>
+<body>
+    <div class="login-container">
+        <div class="login-left">
+            <div>
+                <p style="font-size:1rem;opacity:0.6;margin-bottom:12px;"><i class="fas fa-fingerprint"></i> PayrollFace</p>
+                <h1>Selamat Datang</h1>
+                <p>Sistem Informasi Absensi & Payroll berbasis Face Recognition. Gunakan kamera untuk login atau masuk secara manual sebagai Admin.</p>
+                <div style="margin-top:40px;padding:20px;background:rgba(255,255,255,0.08);border-radius:12px;">
+                    <p style="font-size:0.85rem;opacity:0.8;"><i class="fas fa-info-circle"></i> <b>Login Manual Admin</b></p>
+                    <p style="font-size:0.85rem;opacity:0.6;margin-top:4px;">NIK: ADMIN001 &nbsp;|&nbsp; Password: admin123</p>
+                </div>
+            </div>
         </div>
-        <a href="index.html" style="color: var(--secondary); text-decoration: none; font-size: 0.9rem;">← Kembali ke Beranda</a>
+
+        <div class="login-right">
+            <div class="login-box">
+                <h2>Login Sistem</h2>
+                <p class="subtitle">Arahkan wajah ke kamera untuk masuk</p>
+
+                <div id="face-login-section">
+                    <div class="camera-container" style="margin:0 auto;">
+                        <video id="login-video" autoplay muted playsinline></video>
+                        <div class="face-frame"></div>
+                    </div>
+                    <p class="camera-hint" id="login-hint">Menghubungkan kamera...</p>
+
+                    <button class="btn btn-primary btn-lg btn-block" style="margin-top:20px;" onclick="loginFace()">
+                        <i class="fas fa-fingerprint"></i> Login dengan Wajah
+                    </button>
+                    <p id="login-status" style="margin-top:12px;font-weight:600;min-height:24px;"></p>
+                </div>
+
+                <hr style="margin:24px 0;border-color:var(--border);">
+
+                <a href="#" onclick="toggleManual();return false;" style="color:var(--text-light);font-size:0.9rem;text-decoration:none;">
+                    <i class="fas fa-keyboard"></i> Login Manual (Admin) <i class="fas fa-chevron-down" id="manual-arrow"></i>
+                </a>
+
+                <div id="manual-login" style="display:none;margin-top:20px;text-align:left;">
+                    <div class="form-group">
+                        <label>NIK</label>
+                        <input type="text" id="manual-nik" placeholder="Masukkan NIK">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="manual-password" placeholder="Masukkan password" onkeydown="if(event.key==='Enter')loginManual()">
+                    </div>
+                    <button class="btn btn-success btn-block" onclick="loginManual()">
+                        <i class="fas fa-sign-in-alt"></i> Login
+                    </button>
+                    <p id="manual-status" style="margin-top:12px;font-weight:600;text-align:center;min-height:24px;"></p>
+                </div>
+
+                <div style="margin-top:24px;">
+                    <a href="index.html" style="color:var(--text-light);text-decoration:none;font-size:0.85rem;">
+                        <i class="fas fa-arrow-left"></i> Kembali ke Beranda
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <script src="camera.js"></script>
+    <script>
+        localStorage.removeItem('payrollface_user');
+        initCamera('login-video', 'login-hint');
+
+        function toggleManual() {
+            const el = document.getElementById('manual-login');
+            const arrow = document.getElementById('manual-arrow');
+            const show = el.style.display === 'none';
+            el.style.display = show ? 'block' : 'none';
+            arrow.className = show ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+        }
+
+        async function loginFace() {
+            const status = document.getElementById('login-status');
+            status.textContent = 'Memverifikasi wajah...';
+            status.style.color = '#3b82f6';
+
+            const img = await getImageDataUrlAsync('login-video');
+            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; return; }
+
+            try {
+                const res = await fetch('/api/v1/login/face', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: img })
+                });
+                const r = await res.json();
+                if (r.status === 'success') {
+                    localStorage.setItem('payrollface_user', JSON.stringify(r.user));
+                    status.textContent = 'Selamat datang, ' + r.user.nama + '!';
+                    status.style.color = '#10b981';
+                    setTimeout(() => {
+                        window.location.href = r.user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+                    }, 800);
+                } else {
+                    status.textContent = r.message || 'Login gagal';
+                    status.style.color = '#ef4444';
+                }
+            } catch (e) { status.textContent = 'Server offline!'; status.style.color = '#ef4444'; }
+        }
+
+        async function loginManual() {
+            const nik = document.getElementById('manual-nik').value.trim();
+            const pw = document.getElementById('manual-password').value;
+            const status = document.getElementById('manual-status');
+            if (!nik || !pw) { status.textContent = 'Masukkan NIK dan Password'; status.style.color = '#ef4444'; return; }
+
+            try {
+                const res = await fetch('/api/v1/login/manual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nik, password: pw })
+                });
+                const r = await res.json();
+                if (r.status === 'success') {
+                    localStorage.setItem('payrollface_user', JSON.stringify(r.user));
+                    status.textContent = 'Selamat datang, ' + r.user.nama + '!';
+                    status.style.color = '#10b981';
+                    setTimeout(() => {
+                        window.location.href = r.user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+                    }, 800);
+                } else {
+                    status.textContent = r.message || 'Login gagal';
+                    status.style.color = '#ef4444';
+                }
+            } catch (e) { status.textContent = 'Server offline!'; status.style.color = '#ef4444'; }
+        }
+    </script>
 </body>
 </html>

@@ -4,219 +4,202 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 
 ## Fitur Utama
 
-- **Face Recognition**: Verifikasi wajah menggunakan library `face_recognition` dan OpenCV.
-- **Manajemen Absensi**: Pencatatan jam masuk dan pulang secara real-time.
-- **Rekap Kehadiran**: Riwayat kehadiran dengan keterangan otomatis (terlambat, lembur, pulang cepat). Jam kerja standar: 09:00 - 18:00.
-- **Pengajuan Cuti**: Formulir digital untuk pengajuan cuti ke HRD (termasuk upload surat dokter untuk cuti sakit).
-- **Panel Admin HRD**: Enrollment karyawan baru, edit/hapus data karyawan, dan persetujuan cuti.
-- **Slip Gaji Terintegrasi**: Penghitungan gaji otomatis berdasarkan data karyawan.
-- **Mode Tanpa Kamera**: Upload foto wajah sebagai fallback jika kamera tidak tersedia.
+- **Face Recognition Login**: Login dan absensi menggunakan verifikasi wajah real-time.
+- **Manajemen Absensi**: Pencatatan jam masuk/pulang dengan perhitungan lembur otomatis.
+- **Geolokasi**: Titik lokasi GPS saat absensi, ditampilkan sebagai link Google Maps di tabel HR.
+- **Sistem Payroll**: Gaji pokok + uang kehadiran harian + uang lembur per jam, otomatis dihitung.
+- **Slip Gaji**: Cetak atau download slip gaji bulanan (PDF via print / gambar PNG).
+- **Pengajuan Cuti**: Formulir digital lengkap dengan upload surat dokter untuk cuti sakit.
+- **Panel Admin HRD**: Enrollment karyawan, rekap kehadiran, persetujuan cuti, dan slip gaji.
+- **Responsive**: Tampilan menyesuaikan desktop, tablet, dan mobile.
 
-## Teknologi yang Digunakan
+## Teknologi
 
-- **Frontend**: HTML5, CSS3, JavaScript (Vanilla)
+- **Frontend**: HTML5, CSS3, JavaScript (Vanilla), Font Awesome
 - **Backend**: Python 3.x, Flask
 - **Computer Vision**: OpenCV, face_recognition, dlib
-- **Database**: SQLite (otomatis, tanpa instalasi tambahan)
+- **Database**: SQLite (otomatis dibuat saat pertama jalan)
+- **Deployment**: ngrok (untuk akses publik / dari HP)
 
 ## Struktur File
 
 ```
-project_skripsi_testing/
-├── app.py                  # Backend Flask (API server, 11 endpoint)
-├── camera.js               # Modul kamera & fallback upload foto
-├── style.css               # Stylesheet global
-├── index.html              # Halaman beranda
-├── login.html              # Halaman login (pilih role)
-├── dashboard.html          # Halaman absensi karyawan (face verification)
-├── rekap_kehadiran.html    # Riwayat kehadiran + keterangan telat/lembur
-├── pengajuan_cuti.html     # Formulir & riwayat pengajuan cuti
-├── slip_gaji.html          # Slip gaji karyawan
-├── admin.html              # Panel admin HRD (kelola karyawan & cuti)
-├── test_api.py             # Script testing API tanpa browser
-├── test_images/            # Folder foto wajah untuk testing
-│   ├── test_face.jpg
-│   ├── face_test1.jpg
-│   └── face_test2.jpg
-├── .gitignore              # Ignore database & cache files
-└── requirements.txt        # Daftar dependensi Python
+project_skripsi/
+├── app.py                  # Backend Flask (API server)
+├── camera.js               # Modul kamera (init, capture, stop)
+├── style.css               # Stylesheet global + responsive
+├── index.html              # Halaman landing page
+├── login.html              # Login (face recognition + manual admin)
+├── admin.html              # Panel HR (kelola karyawan, rekap, cuti, slip gaji, absensi HR)
+├── dashboard.html          # Dashboard karyawan (absensi, riwayat, cuti, slip gaji)
+├── slip_gaji.html          # Halaman cetak/download slip gaji
+├── requirements.txt        # Dependensi Python
+├── payrollface.db          # Database SQLite (auto-generated)
+└── README.md
 ```
 
-## Cara Menjalankan Program
+## Cara Menjalankan
 
 ### 1. Prasyarat
 
 - **Python 3.10+** sudah terinstal
+- **pip** (Python package manager)
 - Koneksi internet (untuk instalasi library pertama kali)
 
 ### 2. Instalasi Dependensi
 
-Buka terminal di folder proyek, lalu jalankan:
+Buka terminal / PowerShell di folder proyek:
 
 ```bash
-pip install flask flask-cors opencv-python numpy Pillow
+pip install flask flask-cors opencv-python-headless numpy Pillow
 pip install dlib-bin
 pip install face_recognition --no-deps
 pip install face-recognition-models
 pip install "setuptools<81"
 ```
 
-### 3. Jalankan Server Backend
+### 3. Jalankan Server
 
 ```bash
 python app.py
 ```
 
-Server akan berjalan di **http://127.0.0.1:5000** (loopback) dan mendengarkan di semua antarmuka jaringan sehingga bisa diakses lewat **IP LAN** Anda, misalnya `http://192.168.x.x:5000`. Database SQLite (`payrollface.db`) akan dibuat secara otomatis saat pertama kali dijalankan, lengkap dengan akun Admin HRD default.
+Server berjalan di **http://127.0.0.1:5000**. Database `payrollface.db` dibuat otomatis dengan akun admin default:
 
-### Akses dari jaringan LAN (IP lokal)
+| Field    | Value      |
+|----------|------------|
+| NIK      | `ADMIN001` |
+| Password | `admin123` |
 
-Backend sudah dikonfigurasi dengan `host='0.0.0.0'` agar bisa diakses dari perangkat lain di Wi‑Fi yang sama.
+### 4. Buka di Browser
 
-1. Jalankan `python app.py`.
-2. Cari IP komputer Anda (PowerShell): `ipconfig` → lihat **IPv4 Address** (misalnya `192.168.1.10`).
-3. Dari komputer lain / HP di jaringan yang sama, buka: `http://192.168.1.10:5000` — untuk menguji API.
-4. **Firewall Windows**: jika tidak bisa diakses, izinkan port 5000 (Inbound Rule) atau sementara matikan firewall untuk test.
-5. **Frontend**: setelah server jalan, buka **dari browser** alamat `http://<IP-PC>:5000/` (bukan membuka file `.html` langsung). Halaman dan API dilayani dari backend yang sama; panggilan API memakai path relatif `/api/v1/...` sehingga cocok untuk `localhost`, IP LAN, atau HP di jaringan yang sama.
+Buka **http://127.0.0.1:5000/** di Chrome / Edge / Firefox.
 
-#### HTTPS — agar kamera jalan dari HP lewat IP LAN
+---
 
-Browser memblokir kamera pada **`http://192.168.x.x`** (bukan konteks aman). Untuk uji dari HP/perangkat lain di Wi‑Fi yang sama, jalankan server dengan **HTTPS development** (sertifikat otomatis / self-signed):
+## Deploy dengan ngrok (Akses dari Internet / HP)
+
+ngrok membuat URL publik HTTPS yang mengarah ke server lokal Anda. Ini diperlukan agar kamera bisa diakses dari HP (browser memblokir kamera pada HTTP non-localhost).
+
+### Step 1: Download & Install ngrok
+
+1. Buka **https://ngrok.com/**
+2. **Sign Up** / buat akun gratis
+3. Download ngrok sesuai OS (Windows / macOS / Linux)
+4. Ekstrak file yang didownload
+5. Pindahkan `ngrok.exe` ke folder yang mudah diakses (misalnya `C:\ngrok\` atau tambahkan ke PATH)
+
+### Step 2: Tambahkan Auth Token
+
+Setelah login di dashboard ngrok (https://dashboard.ngrok.com/), salin **Authtoken** Anda, lalu jalankan:
 
 ```bash
-pip install cryptography
+ngrok config add-authtoken YOUR_AUTH_TOKEN_HERE
 ```
 
-**Windows (PowerShell):**
+Ganti `YOUR_AUTH_TOKEN_HERE` dengan token dari dashboard. Ini hanya perlu dilakukan **satu kali**.
 
-```powershell
-$env:USE_HTTPS="1"
+### Step 3: Jalankan Server + ngrok
+
+**Terminal 1** — jalankan Flask server:
+
+```bash
 python app.py
 ```
 
-**macOS / Linux:**
+**Terminal 2** — jalankan ngrok (buka terminal/PowerShell baru):
 
 ```bash
-USE_HTTPS=1 python app.py
+ngrok http 5000
 ```
 
-Lalu di HP buka **`https://<IP-PC>:5000/`** (perhatikan **https**). Browser akan memperingatkan sertifikat tidak tepercaya — itu normal untuk uji lokal; pilih **Advanced** → **Proceed to site** (nama menu bisa sedikit berbeda).
+ngrok akan menampilkan URL publik seperti:
 
-Setelah itu `getUserMedia` (kamera) biasanya berfungsi di IP LAN. Tanpa HTTPS, gunakan **`http://127.0.0.1:5000`** hanya di PC yang menjalankan server.
+```
+Forwarding    https://xxxxx-xxxxx-xxxxx.ngrok-free.dev -> http://localhost:5000
+```
 
-### 4. Buka Frontend
+### Step 4: Akses dari Mana Saja
 
-**Disarankan:** jalankan `python app.py`, lalu di browser buka **http://127.0.0.1:5000/** (PC) atau **http://192.168.x.x:5000/** (perangkat lain di Wi‑Fi yang sama). Flask melayani halaman HTML, CSS, JS, dan API di satu alamat — tidak perlu Live Server terpisah.
+Buka URL `https://xxxxx-xxxxx-xxxxx.ngrok-free.dev` di browser HP atau komputer lain. Semua fitur termasuk kamera akan berfungsi karena HTTPS.
 
-Jika Anda tetap membuka file `index.html` secara langsung dari folder (protokol `file://`), beberapa fitur bisa terbatas; gunakan URL di atas agar frontend dan backend satu origin.
+### Catatan Penting ngrok
+
+| Hal | Keterangan |
+|-----|------------|
+| **URL berubah** | Setiap kali ngrok dimatikan dan dijalankan ulang, URL publik berubah (plan gratis). |
+| **Matikan komputer** | Jika komputer mati, Flask dan ngrok ikut mati. Jalankan ulang keduanya saat menyalakan komputer. |
+| **Urutan** | Selalu jalankan `python app.py` **duluan**, baru `ngrok http 5000`. |
+| **Visitor Warning** | Saat pertama buka URL ngrok, mungkin muncul halaman peringatan ngrok — klik **Visit Site**. |
+
+### Ringkasan Command
+
+```bash
+# Instalasi (sekali saja)
+pip install flask flask-cors opencv-python-headless numpy Pillow
+pip install dlib-bin
+pip install face_recognition --no-deps
+pip install face-recognition-models
+pip install "setuptools<81"
+ngrok config add-authtoken YOUR_TOKEN
+
+# Setiap kali mau jalankan (2 terminal)
+# Terminal 1:
+python app.py
+
+# Terminal 2:
+ngrok http 5000
+```
+
+---
 
 ## Panduan Penggunaan
 
-### Alur Admin HRD
+### Login
 
-1. Buka **http://127.0.0.1:5000/** > klik **Mulai Simulasi Sekarang**
-2. Di halaman login, pilih **Masuk sebagai Admin HRD**
-3. Di panel admin terdapat dua menu:
+- **Face Recognition**: Arahkan wajah ke kamera, sistem mencocokkan otomatis.
+- **Manual (Admin)**: Toggle ke form manual, masukkan NIK `ADMIN001` dan password `admin123`.
 
-**Kelola Karyawan:**
-- **Enrollment Karyawan Baru**:
-  - Isi NIK, Nama Lengkap, dan Gaji Pokok
-  - Jika ada kamera: wajah otomatis terdeteksi dari video
-  - Jika tidak ada kamera: klik area upload, pilih foto wajah karyawan
-  - Klik **Ambil Sampel Wajah** untuk menyimpan data biometrik
-- **Daftar Karyawan**:
-  - Tabel berisi semua karyawan terdaftar (NIK, Nama, Gaji, Tgl Daftar)
-  - Menampilkan total jumlah karyawan
-  - Tombol **Edit**: ubah NIK, Nama, atau Gaji Pokok via modal dialog
-  - Tombol **Hapus**: hapus karyawan beserta seluruh data absensi dan cutinya
+### Admin HRD
 
-**Persetujuan Cuti:**
-- Lihat semua pengajuan cuti dari karyawan
-- Tombol **Setujui** atau **Tolak** untuk pengajuan berstatus Pending
-- Status terupdate secara real-time di halaman karyawan
+1. **Kelola Karyawan** — Daftarkan karyawan baru dengan foto wajah, atur gaji pokok/harian/lembur per jam. Edit atau hapus data.
+2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan jam masuk/keluar, lembur, dan lokasi GPS.
+3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti karyawan.
+4. **Slip Gaji** — Pilih karyawan dan bulan, lihat rincian gaji, cetak atau download.
+5. **Absensi HR** — Absen masuk/pulang dengan face recognition. Daftarkan wajah admin jika belum.
 
-### Alur Karyawan
+### Karyawan
 
-1. Buka **http://127.0.0.1:5000/** > klik **Mulai Simulasi Sekarang**
-2. Di halaman login, pilih **Masuk sebagai Karyawan**
-3. **Absensi** (`dashboard.html`):
-   - Pilih tipe absensi: **Masuk** atau **Pulang**
-   - Jika ada kamera: arahkan wajah ke kamera
-   - Jika tidak ada kamera: upload foto wajah yang sudah didaftarkan
-   - Klik **Mulai Verifikasi Wajah**
-   - Sistem mencocokkan wajah dengan database dan mencatat kehadiran
-4. **Rekap Kehadiran** (`rekap_kehadiran.html`):
-   - Menampilkan Nama dan NIK karyawan dari database
-   - Tabel riwayat: Tanggal, Jam Masuk, Jam Keluar, Status, dan **Keterangan**
-   - Keterangan dihitung otomatis berdasarkan jam kerja standar (09:00 - 18:00):
-     - **Tepat waktu** (hijau) -- masuk sebelum/tepat 09:00
-     - **Terlambat X jam Y menit** (merah) -- masuk setelah 09:00
-     - **Lembur X jam Y menit** (biru) -- pulang setelah 18:00
-     - **Pulang cepat X jam Y menit** (oranye) -- pulang sebelum 18:00
-5. **Pengajuan Cuti** (`pengajuan_cuti.html`):
-   - Menampilkan Nama dan NIK karyawan yang sedang login
-   - Pilih jenis cuti (Tahunan / Sakit / Kepentingan Mendesak)
-   - Jika Cuti Sakit: wajib upload surat dokter
-   - Isi tanggal dan alasan, lalu klik **Kirim Pengajuan ke HRD**
-   - Riwayat pengajuan menampilkan status terbaru dari database (Pending / Approved / Rejected / Cancelled)
-   - Pengajuan berstatus Pending dapat dibatalkan
-6. **Slip Gaji** (`slip_gaji.html`):
-   - Menampilkan Nama, NIK, Gaji Pokok, Potongan, dan Total Diterima
-   - Tombol **Cetak Slip Gaji** untuk print
-
-## Testing API Tanpa Browser
-
-Gunakan script `test_api.py` untuk menguji API backend secara langsung:
-
-```bash
-# Test semua endpoint (otomatis pakai test_images/test_face.jpg)
-python test_api.py
-
-# Test dengan foto tertentu
-python test_api.py test_images/face_test1.jpg
-
-# Test endpoint tertentu
-python test_api.py test_images/test_face.jpg register    # Daftarkan karyawan baru
-python test_api.py test_images/test_face.jpg masuk       # Absensi masuk
-python test_api.py test_images/test_face.jpg pulang      # Absensi pulang
-```
-
-## Cek Isi Database
-
-```bash
-# Lihat semua user
-python -m sqlite3 payrollface.db "SELECT id, nik, nama, role, gaji_pokok FROM users;"
-
-# Lihat log kehadiran
-python -m sqlite3 payrollface.db "SELECT * FROM attendance_logs;"
-
-# Lihat pengajuan cuti
-python -m sqlite3 payrollface.db "SELECT * FROM leaves;"
-
-# Mode interaktif (ketik query SQL bebas, .quit untuk keluar)
-python -m sqlite3 payrollface.db
-```
+1. **Absensi** — Pilih Masuk/Pulang, verifikasi wajah via kamera.
+2. **Riwayat Kehadiran** — Tabel harian: jam masuk, keluar, lembur, lokasi, dan keterangan (terlambat/tepat waktu/lembur).
+3. **Pengajuan Cuti** — Isi formulir, upload surat dokter jika sakit. Lihat status pengajuan.
+4. **Slip Gaji** — Pilih bulan, lihat rincian gaji, cetak atau download sebagai gambar.
 
 ## API Endpoints
 
 | Method | Endpoint | Deskripsi |
 |--------|----------|-----------|
-| POST | `/api/v1/face/register` | Enrollment wajah karyawan baru |
-| POST | `/api/v1/verify-liveness` | Verifikasi wajah untuk absensi masuk/pulang |
-| GET | `/api/v1/employee/data/<id>` | Ambil data & riwayat kehadiran karyawan |
-| GET | `/api/v1/employees` | Daftar semua karyawan (admin) |
-| PUT | `/api/v1/employee/update/<id>` | Edit data karyawan (admin) |
-| DELETE | `/api/v1/employee/delete/<id>` | Hapus karyawan (admin) |
+| POST | `/api/v1/login/face` | Login dengan face recognition |
+| POST | `/api/v1/login/manual` | Login manual (NIK + password) |
+| POST | `/api/v1/verify-liveness` | Absensi masuk/pulang + geolokasi |
+| POST | `/api/v1/face/register` | Enrollment karyawan baru |
+| GET | `/api/v1/employees` | Daftar semua karyawan |
+| GET | `/api/v1/employee/data/<id>` | Data & riwayat kehadiran karyawan |
+| PUT | `/api/v1/employee/update/<id>` | Edit data karyawan |
+| DELETE | `/api/v1/employee/delete/<id>` | Hapus karyawan |
+| GET | `/api/v1/attendance/all` | Rekap kehadiran semua karyawan (HR) |
 | POST | `/api/v1/leave/request` | Ajukan cuti |
 | POST | `/api/v1/leave/cancel` | Batalkan pengajuan cuti |
 | GET | `/api/v1/leave/my/<id>` | Riwayat cuti per karyawan |
-| GET | `/api/v1/leave/list` | Daftar semua pengajuan cuti (admin) |
-| POST | `/api/v1/leave/approve` | Setujui/tolak cuti (admin) |
+| GET | `/api/v1/leave/list` | Daftar semua cuti (HR) |
+| POST | `/api/v1/leave/approve` | Setujui/tolak cuti |
+| GET | `/api/v1/payroll/<id>` | Hitung slip gaji bulanan |
+| POST | `/api/v1/admin/register-face` | Daftarkan wajah admin |
 
 ## Database Schema
 
 Tiga tabel utama (SQLite, auto-generated):
 
-- **users** -- id, nik, nama, role (admin/karyawan), gaji_pokok, face_encoding, created_at
-- **attendance_logs** -- id, user_id (FK), tanggal, jam_masuk, jam_keluar, status
-- **leaves** -- id, user_id (FK), jenis_cuti, tanggal, alasan, attachment, status (Pending/Approved/Rejected/Cancelled)
+- **users** — id, nik, nama, role, password, gaji_pokok, daily_rate, overtime_rate, face_encoding, created_at
+- **attendance_logs** — id, user_id (FK), tanggal, jam_masuk, jam_keluar, overtime_hours, latitude, longitude, status
+- **leaves** — id, user_id (FK), jenis_cuti, tanggal, alasan, attachment, status

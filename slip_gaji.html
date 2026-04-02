@@ -2,65 +2,99 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Slip Gaji</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slip Gaji - PayrollFace</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 700px; margin: 30px auto; padding: 20px; color: #1f2937; }
+        .slip { border: 2px solid #1e3a5f; border-radius: 12px; padding: 36px; background: white; }
+        .slip-header { text-align: center; margin-bottom: 28px; border-bottom: 2px solid #e5e7eb; padding-bottom: 18px; }
+        .slip-header h1 { color: #1e3a5f; font-size: 1.3rem; margin-bottom: 4px; }
+        .slip-header p { color: #6b7280; font-size: 0.88rem; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 22px; }
+        .info-grid p { font-size: 0.92rem; }
+        .info-grid b { color: #1e3a5f; }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 0.88rem; }
+        th { background: #1e3a5f; color: white; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        th:first-child { border-radius: 8px 0 0 0; } th:last-child { border-radius: 0 8px 0 0; }
+        .total-row { font-weight: 700; background: #f0f2f5; }
+        .total-row td { border-top: 2px solid #1e3a5f; }
+        .footer { margin-top: 46px; display: flex; justify-content: space-between; padding: 0 16px; }
+        .footer div { text-align: center; min-width: 160px; }
+        .footer .line { margin-top: 60px; border-top: 1px solid #333; display: block; }
+        .actions { margin-top: 24px; text-align: center; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .btn { padding: 11px 22px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-outline { background: transparent; border: 1.5px solid #e5e7eb; color: #1f2937; }
+        @media print { .actions { display: none !important; } }
+        @media (max-width: 600px) {
+            body { padding: 10px; margin: 10px auto; }
+            .slip { padding: 16px; border-width: 1.5px; }
+            .slip-header h1 { font-size: 1.1rem; }
+            .info-grid { grid-template-columns: 1fr; gap: 4px; }
+            .info-grid p { font-size: 0.85rem; }
+            table { min-width: 0; }
+            th, td { padding: 8px 8px; font-size: 0.8rem; }
+            .footer { flex-direction: column; gap: 28px; align-items: center; }
+            .footer div { min-width: 140px; }
+            .footer .line { margin-top: 45px; }
+            .btn { padding: 10px 16px; font-size: 0.82rem; }
+        }
+        @media (max-width: 380px) {
+            .slip { padding: 12px; }
+            th, td { padding: 6px 6px; font-size: 0.75rem; }
+        }
+    </style>
 </head>
 <body>
-    <nav>
-        <div class="logo">PayrollFace</div>
-        <ul>
-            <li><a href="dashboard.html">Absensi</a></li>
-            <li><a href="rekap_kehadiran.html">Rekap</a></li>
-            <li><a href="pengajuan_cuti.html">Cuti</a></li>
-            <li><a href="slip_gaji.html">Slip Gaji</a></li>
-            <li><a href="index.html">Keluar</a></li>
-        </ul>
-    </nav>
-
-    <div class="container">
-        <div class="card">
-            <h2>Slip Gaji Terintegrasi</h2>
-            <div id="payslip-content">Memuat data gaji...</div>
-            <br>
-            <button onclick="window.print()" class="btn-scan">Cetak Slip Gaji</button>
-        </div>
+    <div class="slip" id="slip">
+        <p style="text-align:center;color:#6b7280;padding:30px 0;">Memuat data slip gaji...</p>
+    </div>
+    <div class="actions" id="actions-bar" style="display:none;">
+        <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Cetak / Save PDF</button>
+        <button class="btn btn-success" onclick="downloadImage()"><i class="fas fa-download"></i> Download Gambar</button>
+        <button class="btn btn-outline" onclick="window.close()"><i class="fas fa-times"></i> Tutup</button>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script>
-        async function loadSlip() {
-            const userId = localStorage.getItem('current_user_id');
-            if (!userId) {
-                document.getElementById('payslip-content').innerText = 'Silakan absensi dulu agar sistem mengenali Anda.';
-                return;
-            }
+        const params = new URLSearchParams(window.location.search);
+        let userId = params.get('user_id');
+        let month = params.get('month');
+        if (!userId) { try { const u = JSON.parse(localStorage.getItem('payrollface_user')); if (u) userId = u.id; } catch(e) {} }
+        if (!month) month = new Date().toISOString().slice(0, 7);
+        const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+        let slipNama = 'slip_gaji';
 
+        async function load() {
+            const el = document.getElementById('slip');
+            const actions = document.getElementById('actions-bar');
+            if (!userId) { el.innerHTML = '<p style="text-align:center;color:#ef4444;">User tidak ditemukan.</p>'; return; }
             try {
-                const res = await fetch(`/api/v1/employee/data/${userId}`);
-                const data = await res.json();
-
-                if (!data.user) {
-                    document.getElementById('payslip-content').innerText = 'Data karyawan tidak ditemukan.';
-                    return;
-                }
-
-                const totalGaji = data.user.gaji_pokok - 250000;
-
-                document.getElementById('payslip-content').innerHTML = `
-                    <p><b>Nama</b>: ${data.user.nama}</p>
-                    <p><b>NIK</b>: ${data.user.nik}</p>
-                    <hr>
-                    <table>
-                        <tr><th>Komponen</th><th>Nilai</th></tr>
-                        <tr><td>Gaji Pokok</td><td>Rp ${data.user.gaji_pokok.toLocaleString()}</td></tr>
-                        <tr><td>Potongan (Wajib)</td><td>(Rp 250.000)</td></tr>
-                        <tr style="font-weight:bold;"><td>Total Diterima</td><td>Rp ${totalGaji.toLocaleString()}</td></tr>
-                    </table>
-                `;
-            } catch (e) {
-                document.getElementById('payslip-content').innerText = 'Gagal memuat data. Pastikan server berjalan.';
-            }
+                const res = await fetch('/api/v1/payroll/' + userId + '?month=' + month); const d = await res.json();
+                if (!d.user) { el.innerHTML = '<p style="text-align:center;color:#ef4444;">Data tidak ditemukan.</p>'; return; }
+                slipNama = 'slip_gaji_' + d.user.nik + '_' + d.month;
+                el.innerHTML = '<div class="slip-header"><h1>SLIP GAJI KARYAWAN</h1><p>PayrollFace System &mdash; Periode ' + d.month + '</p></div><div class="info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIK:</b> ' + d.user.nik + '</p><p><b>Total Hari Hadir:</b> ' + d.total_days + ' hari</p><p><b>Total Jam Lembur:</b> ' + d.total_overtime_hours + ' jam</p></div><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Uang Kehadiran (' + d.total_days + ' hari &times; ' + rp(d.user.daily_rate) + ')</td><td style="text-align:right;">' + rp(d.daily_total) + '</td></tr><tr><td>Uang Lembur (' + d.total_overtime_hours + ' jam &times; ' + rp(d.user.overtime_rate) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr class="total-row"><td>TOTAL DITERIMA</td><td style="text-align:right;">' + rp(d.grand_total) + '</td></tr></tbody></table><div class="footer"><div><p style="font-size:0.83rem;">Karyawan</p><span class="line"></span><p style="font-weight:600;margin-top:8px;">' + d.user.nama + '</p></div><div><p style="font-size:0.83rem;">HRD</p><span class="line"></span><p style="font-weight:600;margin-top:8px;">Admin HRD</p></div></div>';
+                actions.style.display = 'flex';
+            } catch(e) { el.innerHTML = '<p style="text-align:center;color:#ef4444;">Gagal memuat data.</p>'; }
         }
-        window.onload = loadSlip;
+
+        async function downloadImage() {
+            const el = document.getElementById('slip');
+            try {
+                const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+                const link = document.createElement('a');
+                link.download = slipNama + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch (e) { alert('Gagal mengunduh gambar. Coba gunakan Cetak > Save as PDF.'); }
+        }
+
+        load();
     </script>
 </body>
 </html>

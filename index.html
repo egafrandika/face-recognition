@@ -2,34 +2,62 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Sistem Absensi & Payroll - Beranda</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PayrollFace - Sistem Absensi & Payroll</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
     <nav>
-        <div class="logo">PayrollFace</div>
+        <div style="font-size:1.3rem;font-weight:700;letter-spacing:-0.5px;">
+            <i class="fas fa-fingerprint"></i> PayrollFace
+        </div>
         <ul>
-            <li><a href="#about">About</a></li>
-            <li><a href="login.html" class="btn-login">Login</a></li>
+            <li><a href="login.html" class="btn btn-primary" style="padding:8px 20px;font-size:0.9rem;">Login</a></li>
         </ul>
     </nav>
 
     <div class="container hero-section">
-        <h1 style="font-size: 2.8rem; margin-bottom: 10px; color: #2c3e50;">
-            Sistem Informasi Absensi & Payroll
-        </h1>
-        <h2 style="font-size: 2.2rem; margin-bottom: 20px; color: #34495e;">
-            Berbasis Face Recognition
-        </h2>
-        <p style="font-size: 1.1rem; color: #7f8c8d; margin-bottom: 30px;">
-            Oleh: Vincentius Gigih Heryojatmiko (2602100354)
-        </p>
-        
-        <a href="login.html" class="btn-scan">Mulai Simulasi Sekarang</a>
-    </div><br><br><br><br><br><br><br><br><br><br><br>
+        <div style="max-width:700px;">
+            <h1 style="font-size:2.8rem;font-weight:800;color:var(--primary);margin-bottom:16px;line-height:1.2;">
+                Sistem Informasi<br>Absensi & Payroll
+            </h1>
+            <h2 style="font-size:1.5rem;font-weight:500;color:var(--secondary);margin-bottom:20px;">
+                Berbasis Face Recognition
+            </h2>
+            <p style="font-size:1rem;color:var(--text-light);margin-bottom:12px;">
+                Oleh: Miko Kuswandaru
+            </p>
+            <p style="font-size:1.05rem;color:var(--text-light);margin-bottom:40px;line-height:1.7;max-width:550px;margin-left:auto;margin-right:auto;">
+                Solusi modern untuk manajemen kehadiran dan penggajian karyawan
+                menggunakan teknologi pengenalan wajah yang akurat dan efisien.
+            </p>
+            <a href="login.html" class="btn btn-primary btn-lg">
+                <i class="fas fa-arrow-right"></i> Mulai Sekarang
+            </a>
+        </div>
 
-    <footer style="background: #2c3e50; color: white; padding: 20px; text-align: center;">
-        <p>BINUS University - 2026</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:80px;max-width:800px;">
+            <div style="text-align:center;padding:24px;">
+                <i class="fas fa-face-smile" style="font-size:2.5rem;color:var(--secondary);margin-bottom:12px;display:block;"></i>
+                <h3 style="font-size:1rem;margin-bottom:8px;">Face Recognition</h3>
+                <p style="font-size:0.85rem;color:var(--text-light);">Login & absensi menggunakan pengenalan wajah</p>
+            </div>
+            <div style="text-align:center;padding:24px;">
+                <i class="fas fa-clock" style="font-size:2.5rem;color:var(--accent);margin-bottom:12px;display:block;"></i>
+                <h3 style="font-size:1rem;margin-bottom:8px;">Tracking Otomatis</h3>
+                <p style="font-size:0.85rem;color:var(--text-light);">Hitung lembur dan kehadiran secara otomatis</p>
+            </div>
+            <div style="text-align:center;padding:24px;">
+                <i class="fas fa-file-invoice-dollar" style="font-size:2.5rem;color:var(--warning);margin-bottom:12px;display:block;"></i>
+                <h3 style="font-size:1rem;margin-bottom:8px;">Payroll Terintegrasi</h3>
+                <p style="font-size:0.85rem;color:var(--text-light);">Slip gaji otomatis berdasarkan kehadiran</p>
+            </div>
+        </div>
+    </div>
+
+    <footer style="background:var(--primary);color:white;padding:20px;text-align:center;font-size:0.9rem;">
+        <p>PayrollFace System &copy; 2026</p>
     </footer>
 </body>
 </html>
