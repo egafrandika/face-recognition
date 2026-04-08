@@ -210,6 +210,13 @@
             return '<a class="loc-link" href="https://www.google.com/maps?q=' + lat + ',' + lng + '" target="_blank"><i class="fas fa-map-marker-alt"></i> ' + Number(lat).toFixed(5) + ', ' + Number(lng).toFixed(5) + '</a>';
         }
 
+        function attachPreview(url) {
+            if (!url) return '';
+            if (url.toLowerCase().endsWith('.pdf'))
+                return '<a href="' + url + '" target="_blank" style="color:var(--secondary);font-size:0.78rem;"><i class="fas fa-file-pdf"></i> Lihat Surat (PDF)</a>';
+            return '<a href="' + url + '" target="_blank" style="display:inline-block;margin-top:6px;"><img src="' + url + '" style="max-width:120px;max-height:80px;border-radius:6px;border:1px solid var(--border);object-fit:cover;" alt="Surat"></a>';
+        }
+
         // ─── ENROLLMENT ───
         document.getElementById('btn-enroll').onclick = async function() {
             const nik = document.getElementById('input-nik').value.trim();
@@ -278,7 +285,7 @@
             try {
                 const res = await fetch('/api/v1/leave/list'); const data = await res.json();
                 if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan cuti.</td></tr>'; return; }
-                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.karyawan + '</td><td>' + c.jenis_cuti + '</td><td>' + c.tanggal + '</td><td><small>' + (c.alasan || '-') + '</small>' + (c.attachment ? '<br><a href="' + c.attachment + '" target="_blank" style="color:var(--secondary);font-size:0.75rem;"><i class="fas fa-paperclip"></i> Surat</a>' : '') + '</td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td style="white-space:nowrap;">' + (c.status === 'Pending' ? '<button class="btn btn-success btn-sm" onclick="handleLeave(' + c.id + ',\'Approved\')"><i class="fas fa-check"></i></button> <button class="btn btn-danger btn-sm" onclick="handleLeave(' + c.id + ',\'Rejected\')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
+                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.karyawan + '</td><td>' + c.jenis_cuti + '</td><td>' + c.tanggal + '</td><td><small>' + (c.alasan || '-') + '</small>' + (c.attachment ? '<br>' + attachPreview(c.attachment) : '') + '</td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td style="white-space:nowrap;">' + (c.status === 'Pending' ? '<button class="btn btn-success btn-sm" onclick="handleLeave(' + c.id + ',\'Approved\')"><i class="fas fa-check"></i></button> <button class="btn btn-danger btn-sm" onclick="handleLeave(' + c.id + ',\'Rejected\')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
             } catch (e) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 

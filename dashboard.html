@@ -77,7 +77,7 @@
                     <div class="card">
                         <div class="card-header"><h2><i class="fas fa-list-alt"></i> Riwayat Pengajuan</h2></div>
                         <div class="table-wrap">
-                            <table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="my-leave-body"></tbody></table>
+                            <table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Alasan</th><th>Lampiran</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="my-leave-body"></tbody></table>
                         </div>
                     </div>
                 </section>
@@ -151,6 +151,13 @@
             return '<a class="loc-link" href="https://www.google.com/maps?q=' + lat + ',' + lng + '" target="_blank"><i class="fas fa-map-marker-alt"></i> Lihat</a>';
         }
 
+        function attachPreview(url) {
+            if (!url) return '<span style="color:var(--grey);font-size:0.78rem;">-</span>';
+            if (url.toLowerCase().endsWith('.pdf'))
+                return '<a href="' + url + '" target="_blank" style="color:var(--secondary);font-size:0.78rem;"><i class="fas fa-file-pdf"></i> Lihat PDF</a>';
+            return '<a href="' + url + '" target="_blank"><img src="' + url + '" style="max-width:80px;max-height:60px;border-radius:4px;border:1px solid var(--border);object-fit:cover;" alt="Surat"></a>';
+        }
+
         // ─── ABSENSI ───
         async function doAbsensi() {
             const status = document.getElementById('absensi-status');
@@ -210,9 +217,9 @@
             const tbody = document.getElementById('my-leave-body');
             try {
                 const res = await fetch('/api/v1/leave/my/' + user.id); const data = await res.json();
-                if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan.</td></tr>'; return; }
-                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.tanggal + '</td><td>' + c.jenis_cuti + '</td><td><small>' + (c.alasan || '-') + '</small></td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td>' + (c.status === 'Pending' ? '<button class="btn btn-danger btn-sm" onclick="cancelCuti(' + c.id + ')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan.</td></tr>'; return; }
+                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.tanggal + '</td><td>' + c.jenis_cuti + '</td><td><small>' + (c.alasan || '-') + '</small></td><td>' + attachPreview(c.attachment) + '</td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td>' + (c.status === 'Pending' ? '<button class="btn btn-danger btn-sm" onclick="cancelCuti(' + c.id + ')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
         async function cancelCuti(id) {

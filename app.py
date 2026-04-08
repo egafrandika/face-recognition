@@ -9,8 +9,18 @@ import os
 import face_recognition
 from datetime import datetime
 import hashlib
+import cloudinary
+import cloudinary.uploader
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+cloudinary.config(
+    cloud_name="dfypljeaj",
+    api_key="198827775726965",
+    api_secret="eRroGuOLjdHBme3jLyYO2tAn2wA",
+    secure=True
+)
+
 app = Flask(__name__)
 CORS(app)
 
@@ -369,16 +379,33 @@ def all_attendance():
 
 # ─── LEAVE MANAGEMENT ────────────────────────────────────
 
+def _save_attachment(data_url):
+    """Upload attachment to Cloudinary (folder LeaveImg)."""
+    if not data_url or not data_url.startswith('data:'):
+        return None
+    try:
+        result = cloudinary.uploader.upload(
+            data_url,
+            folder="LeaveImg",
+            resource_type="auto"
+        )
+        return result.get('secure_url')
+    except Exception as e:
+        print(f"[Cloudinary] Upload gagal: {e}")
+        return None
+
+
 @app.route('/api/v1/leave/request', methods=['POST'])
 def request_leave():
     data = request.json
     try:
+        attachment_url = _save_attachment(data.get('attachment'))
         conn = get_db()
         try:
             conn.execute(
                 "INSERT INTO leaves (user_id, jenis_cuti, tanggal, alasan, attachment) VALUES (?, ?, ?, ?, ?)",
                 (data.get('user_id'), data.get('jenis'), data.get('tanggal'),
-                 data.get('alasan'), data.get('attachment'))
+                 data.get('alasan'), attachment_url)
             )
             conn.commit()
             return jsonify({"status": "success", "message": "Pengajuan cuti berhasil!"})
