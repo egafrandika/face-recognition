@@ -6,11 +6,14 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 
 - **Face Recognition Login**: Login dan absensi menggunakan verifikasi wajah real-time.
 - **Manajemen Absensi**: Pencatatan jam masuk/pulang dengan perhitungan lembur otomatis.
+- **Foto Absensi**: Foto wajah karyawan saat masuk & keluar otomatis tersimpan di Cloudinary dan ditampilkan di rekap kehadiran (satu kali per hari, tidak bisa diulang).
 - **Geolokasi**: Titik lokasi GPS saat absensi, ditampilkan sebagai link Google Maps di tabel HR.
+- **Cloudinary Storage**: Lampiran surat dokter (cuti sakit) dan foto absensi disimpan di cloud via Cloudinary.
 - **Sistem Payroll**: Gaji pokok + uang kehadiran harian + uang lembur per jam, otomatis dihitung.
 - **Slip Gaji**: Cetak atau download slip gaji bulanan (PDF via print / gambar PNG).
 - **Pengajuan Cuti**: Formulir digital lengkap dengan upload surat dokter untuk cuti sakit.
 - **Panel Admin HRD**: Enrollment karyawan, rekap kehadiran, persetujuan cuti, dan slip gaji.
+- **Loading Indicator**: Spinner animasi pada semua tabel dan tombol aksi saat fetching data.
 - **Responsive**: Tampilan menyesuaikan desktop, tablet, dan mobile.
 
 ## Teknologi
@@ -19,6 +22,7 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 - **Backend**: Python 3.x, Flask
 - **Computer Vision**: OpenCV, face_recognition, dlib
 - **Database**: SQLite (otomatis dibuat saat pertama jalan)
+- **Cloud Storage**: Cloudinary (foto absensi & lampiran cuti)
 - **Deployment**: ngrok (untuk akses publik / dari HP)
 
 ## Struktur File
@@ -56,9 +60,48 @@ pip install dlib-bin
 pip install face_recognition --no-deps
 pip install face-recognition-models
 pip install "setuptools<81"
+pip install cloudinary
 ```
 
-### 3. Jalankan Server
+### 3. Konfigurasi Cloudinary
+
+Aplikasi ini menggunakan **Cloudinary** untuk menyimpan foto absensi dan lampiran surat cuti di cloud.
+
+#### 3a. Buat Akun Cloudinary
+
+1. Buka **https://cloudinary.com/** dan buat akun gratis
+2. Setelah login, buka **Dashboard** — catat 3 nilai berikut:
+   - **Cloud Name** (contoh: `dfypljeaj`)
+   - **API Key** (contoh: `198827775726965`)
+   - **API Secret** (contoh: `eRroGuOLjdHBme3jLyYO2tAn2wA`)
+
+#### 3b. Konfigurasi di `app.py`
+
+Buka file `app.py`, cari bagian konfigurasi Cloudinary di baris atas:
+
+```python
+cloudinary.config(
+    cloud_name="dfypljeaj",
+    api_key="198827775726965",
+    api_secret="eRroGuOLjdHBme3jLyYO2tAn2wA",
+    secure=True
+)
+```
+
+Ganti nilai `cloud_name`, `api_key`, dan `api_secret` dengan milik Anda.
+
+#### 3c. Folder Otomatis di Cloudinary
+
+Aplikasi akan membuat folder secara otomatis di Cloudinary:
+
+| Folder | Isi |
+|--------|-----|
+| `AttendancePhoto/` | Foto wajah saat absen masuk & pulang |
+| `LeaveImg/` | Lampiran surat dokter (cuti sakit) |
+
+Anda bisa melihat file yang ter-upload di **Media Library** pada dashboard Cloudinary.
+
+### 4. Jalankan Server
 
 ```bash
 python app.py
@@ -71,7 +114,7 @@ Server berjalan di **http://127.0.0.1:5000**. Database `payrollface.db` dibuat o
 | NIK      | `ADMIN001` |
 | Password | `admin123` |
 
-### 4. Buka di Browser
+### 5. Buka di Browser
 
 Buka **http://127.0.0.1:5000/** di Chrome / Edge / Firefox.
 
@@ -141,6 +184,7 @@ pip install dlib-bin
 pip install face_recognition --no-deps
 pip install face-recognition-models
 pip install "setuptools<81"
+pip install cloudinary
 ngrok config add-authtoken YOUR_TOKEN
 
 # Setiap kali mau jalankan (2 terminal)
@@ -163,16 +207,16 @@ ngrok http 5000
 ### Admin HRD
 
 1. **Kelola Karyawan** — Daftarkan karyawan baru dengan foto wajah, atur gaji pokok/harian/lembur per jam. Edit atau hapus data.
-2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan jam masuk/keluar, lembur, dan lokasi GPS.
-3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti karyawan.
+2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan foto masuk/keluar, jam masuk/keluar, lembur, dan lokasi GPS.
+3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti karyawan. Lihat lampiran surat dokter.
 4. **Slip Gaji** — Pilih karyawan dan bulan, lihat rincian gaji, cetak atau download.
 5. **Absensi HR** — Absen masuk/pulang dengan face recognition. Daftarkan wajah admin jika belum.
 
 ### Karyawan
 
-1. **Absensi** — Pilih Masuk/Pulang, verifikasi wajah via kamera.
-2. **Riwayat Kehadiran** — Tabel harian: jam masuk, keluar, lembur, lokasi, dan keterangan (terlambat/tepat waktu/lembur).
-3. **Pengajuan Cuti** — Isi formulir, upload surat dokter jika sakit. Lihat status pengajuan.
+1. **Absensi** — Pilih Masuk/Pulang, verifikasi wajah via kamera. Foto wajah otomatis tersimpan (sekali per hari, tidak bisa diulang).
+2. **Riwayat Kehadiran** — Tabel harian: foto masuk/keluar, jam masuk, keluar, lembur, lokasi, dan keterangan (terlambat/tepat waktu/lembur).
+3. **Pengajuan Cuti** — Isi formulir, upload surat dokter jika sakit (tersimpan di Cloudinary). Lihat status pengajuan.
 4. **Slip Gaji** — Pilih bulan, lihat rincian gaji, cetak atau download sebagai gambar.
 
 ## API Endpoints
@@ -201,5 +245,5 @@ ngrok http 5000
 Tiga tabel utama (SQLite, auto-generated):
 
 - **users** — id, nik, nama, role, password, gaji_pokok, daily_rate, overtime_rate, face_encoding, created_at
-- **attendance_logs** — id, user_id (FK), tanggal, jam_masuk, jam_keluar, overtime_hours, latitude, longitude, status
-- **leaves** — id, user_id (FK), jenis_cuti, tanggal, alasan, attachment, status
+- **attendance_logs** — id, user_id (FK), tanggal, jam_masuk, jam_keluar, overtime_hours, latitude, longitude, foto_masuk, foto_keluar, status
+- **leaves** — id, user_id (FK), jenis_cuti, tanggal, alasan, attachment (Cloudinary URL), status

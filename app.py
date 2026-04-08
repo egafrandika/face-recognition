@@ -247,15 +247,14 @@ def verify_absensi():
             jam = now.strftime("%H:%M:%S")
 
             log = conn.execute(
-                "SELECT id FROM attendance_logs WHERE user_id = ? AND tanggal = ?",
+                "SELECT id, jam_keluar FROM attendance_logs WHERE user_id = ? AND tanggal = ?",
                 (found['id'], tgl)
             ).fetchone()
-
-            foto_url = _upload_photo(image_data)
 
             if absensi_type == 'Masuk':
                 if log:
                     return jsonify({"status": "error", "message": "Sudah absen masuk hari ini"}), 200
+                foto_url = _upload_photo(image_data)
                 conn.execute(
                     "INSERT INTO attendance_logs (user_id, tanggal, jam_masuk, latitude, longitude, foto_masuk) VALUES (?, ?, ?, ?, ?, ?)",
                     (found['id'], tgl, jam, lat, lng, foto_url)
@@ -263,6 +262,9 @@ def verify_absensi():
             else:
                 if not log:
                     return jsonify({"status": "error", "message": "Belum absen masuk hari ini"}), 200
+                if log['jam_keluar']:
+                    return jsonify({"status": "error", "message": "Sudah absen pulang hari ini"}), 200
+                foto_url = _upload_photo(image_data)
                 ot = _calc_overtime(jam)
                 conn.execute(
                     "UPDATE attendance_logs SET jam_keluar = ?, overtime_hours = ?, latitude = COALESCE(latitude, ?), longitude = COALESCE(longitude, ?), foto_keluar = ? WHERE id = ?",
