@@ -81,9 +81,9 @@ Buka file `app.py`, cari bagian konfigurasi Cloudinary di baris atas:
 
 ```python
 cloudinary.config(
-    cloud_name="dfypljeaj",
-    api_key="198827775726965",
-    api_secret="eRroGuOLjdHBme3jLyYO2tAn2wA",
+    cloud_name="dfyplxxx",
+    api_key="19882777xxxxxx",
+    api_secret="eRroGuOLjdHBme3xxxxxxx",
     secure=True
 )
 ```
