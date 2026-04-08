@@ -81,8 +81,8 @@
                         </div>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Tanggal</th><th>NIK</th><th>Nama</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th></tr></thead>
-                                <tbody id="rekap-table-body"><tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-light);">Pilih bulan lalu klik Tampilkan.</td></tr></tbody>
+                                <thead><tr><th>Tanggal</th><th>NIK</th><th>Nama</th><th>Foto Masuk</th><th>Foto Keluar</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th></tr></thead>
+                                <tbody id="rekap-table-body"><tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Pilih bulan lalu klik Tampilkan.</td></tr></tbody>
                             </table>
                         </div>
                     </div>
@@ -217,13 +217,22 @@
             return '<a href="' + url + '" target="_blank" style="display:inline-block;margin-top:6px;"><img src="' + url + '" style="max-width:120px;max-height:80px;border-radius:6px;border:1px solid var(--border);object-fit:cover;" alt="Surat"></a>';
         }
 
+        function fotoCell(url) {
+            if (!url) return '<span style="color:var(--grey);font-size:0.75rem;">-</span>';
+            return '<img src="' + url + '" class="att-photo" onclick="window.open(\'' + url + '\',\'_blank\')" alt="Foto">';
+        }
+
+        function loadingRow(cols) { return '<tr class="loading-row"><td colspan="' + cols + '"><span class="spinner"></span> Memuat data...</td></tr>'; }
+
         // ─── ENROLLMENT ───
         document.getElementById('btn-enroll').onclick = async function() {
+            const btn = this;
             const nik = document.getElementById('input-nik').value.trim();
             const nama = document.getElementById('input-nama').value.trim();
             if (!nik || !nama) { alert('NIK dan Nama wajib diisi!'); return; }
             const img = await getImageDataUrlAsync('admin-video');
             if (!img) { alert('Kamera belum siap.'); return; }
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Mendaftarkan...';
             try {
                 const res = await fetch('/api/v1/face/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ nik, nama, image: img, gaji_pokok: parseFloat(document.getElementById('input-gaji').value) || 0, daily_rate: parseFloat(document.getElementById('input-daily').value) || 0, overtime_rate: parseFloat(document.getElementById('input-overtime').value) || 0 })
@@ -231,12 +240,14 @@
                 const r = await res.json(); alert(r.message);
                 if (r.status === 'success') { document.getElementById('input-nik').value = ''; document.getElementById('input-nama').value = ''; loadEmployees(); }
             } catch (e) { alert('Gagal menghubungi server.'); }
+            btn.disabled = false; btn.innerHTML = '<i class="fas fa-camera"></i> Ambil Sampel & Daftarkan';
         };
 
         // ─── EMPLOYEE TABLE ───
         async function loadEmployees() {
             const tbody = document.getElementById('employee-table-body');
             const countEl = document.getElementById('employee-count');
+            tbody.innerHTML = loadingRow(8);
             try {
                 const res = await fetch('/api/v1/employees'); const data = await res.json();
                 countEl.textContent = 'Total: ' + data.total;
@@ -271,17 +282,18 @@
             const tbody = document.getElementById('rekap-table-body');
             const month = document.getElementById('rekap-month').value;
             if (!month) { alert('Pilih bulan.'); return; }
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;">Memuat...</td></tr>';
+            tbody.innerHTML = loadingRow(10);
             try {
                 const res = await fetch('/api/v1/attendance/all?month=' + month); const data = await res.json();
-                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-light);">Tidak ada data kehadiran.</td></tr>'; return; }
-                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + l.nik + '</td><td>' + l.nama + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + ' jam</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td></tr>').join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Tidak ada data kehadiran.</td></tr>'; return; }
+                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + l.nik + '</td><td>' + l.nama + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + ' jam</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td></tr>').join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
         // ─── LEAVE APPROVAL ───
         async function loadLeaveRequests() {
             const tbody = document.getElementById('admin-list-cuti');
+            tbody.innerHTML = loadingRow(6);
             try {
                 const res = await fetch('/api/v1/leave/list'); const data = await res.json();
                 if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan cuti.</td></tr>'; return; }
@@ -312,7 +324,7 @@
             if (!uid) { alert('Pilih karyawan.'); return; }
             if (!month) { alert('Pilih bulan.'); return; }
             lastSlipUserId = uid;
-            el.innerHTML = '<p style="color:var(--text-light);">Memuat...</p>';
+            el.innerHTML = '<div style="text-align:center;padding:20px;"><span class="spinner"></span> Memuat data...</div>';
             try {
                 const res = await fetch('/api/v1/payroll/' + uid + '?month=' + month); const d = await res.json();
                 if (!d.user) { el.innerHTML = '<p>Data tidak ditemukan.</p>'; actions.style.display = 'none'; return; }
@@ -330,14 +342,17 @@
         // ─── ADMIN ATTENDANCE ───
         async function adminAbsen(type) {
             const status = document.getElementById('admin-att-status');
-            status.textContent = 'Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
+            const btns = document.querySelectorAll('#section-attendance .btn-success, #section-attendance .btn-warning');
+            btns.forEach(b => b.disabled = true);
+            status.innerHTML = '<span class="spinner"></span> Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
             const [img, loc] = await Promise.all([getImageDataUrlAsync('admin-att-video'), getLocation()]);
-            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; return; }
+            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; btns.forEach(b => b.disabled = false); return; }
             try {
                 const res = await fetch('/api/v1/verify-liveness', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: img, type, user_id: user.id, latitude: loc.latitude || null, longitude: loc.longitude || null }) });
                 const r = await res.json(); status.textContent = r.message; status.style.color = r.status === 'success' ? '#10b981' : '#ef4444';
             } catch (e) { status.textContent = 'Server offline!'; status.style.color = '#ef4444'; }
+            btns.forEach(b => b.disabled = false);
         }
 
         async function registerAdminFace() {

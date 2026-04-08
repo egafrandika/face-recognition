@@ -57,7 +57,7 @@
                         <p style="color:var(--text-light);font-size:0.82rem;margin-bottom:14px;">Jam kerja: <b>09:00</b> - <b>17:00</b> | Lembur per jam penuh setelah 17:00</p>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Tanggal</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th><th>Ket.</th></tr></thead>
+                                <thead><tr><th>Tanggal</th><th>Foto Masuk</th><th>Foto Keluar</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th><th>Ket.</th></tr></thead>
                                 <tbody id="history-table-body"></tbody>
                             </table>
                         </div>
@@ -158,20 +158,30 @@
             return '<a href="' + url + '" target="_blank"><img src="' + url + '" style="max-width:80px;max-height:60px;border-radius:4px;border:1px solid var(--border);object-fit:cover;" alt="Surat"></a>';
         }
 
+        function fotoCell(url) {
+            if (!url) return '<span style="color:var(--grey);font-size:0.75rem;">-</span>';
+            return '<img src="' + url + '" class="att-photo" onclick="window.open(\'' + url + '\',\'_blank\')" alt="Foto">';
+        }
+
+        function loadingRow(cols) { return '<tr class="loading-row"><td colspan="' + cols + '"><span class="spinner"></span> Memuat data...</td></tr>'; }
+
         // ─── ABSENSI ───
         async function doAbsensi() {
             const status = document.getElementById('absensi-status');
             const type = document.getElementById('absensi-type').value;
-            status.textContent = 'Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
+            const btn = document.querySelector('#section-attendance .btn-primary');
+            status.innerHTML = '<span class="spinner"></span> Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
+            btn.disabled = true;
 
             const [img, loc] = await Promise.all([getImageDataUrlAsync('emp-video'), getLocation()]);
-            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; return; }
+            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
 
             try {
                 const res = await fetch('/api/v1/verify-liveness', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: img, type, user_id: user.id, latitude: loc.latitude || null, longitude: loc.longitude || null }) });
                 const r = await res.json(); status.textContent = r.message; status.style.color = r.status === 'success' ? '#10b981' : '#ef4444';
             } catch (e) { status.textContent = 'Server offline!'; status.style.color = '#ef4444'; }
+            btn.disabled = false;
         }
 
         // ─── RIWAYAT KEHADIRAN ───
@@ -190,12 +200,13 @@
         async function loadHistory() {
             const tbody = document.getElementById('history-table-body');
             const info = document.getElementById('history-user-info');
+            tbody.innerHTML = loadingRow(9);
             try {
                 const res = await fetch('/api/v1/employee/data/' + user.id); const data = await res.json();
                 if (data.user) info.innerHTML = '<b>Nama:</b> ' + data.user.nama + ' | <b>NIK:</b> ' + data.user.nik;
-                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada data.</td></tr>'; return; }
-                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + 'j</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td><td>' + keterangan(l.jam_masuk, l.jam_keluar) + '</td></tr>').join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada data.</td></tr>'; return; }
+                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + 'j</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td><td>' + keterangan(l.jam_masuk, l.jam_keluar) + '</td></tr>').join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
         // ─── CUTI ───
@@ -203,18 +214,22 @@
         const toBase64 = file => new Promise((res, rej) => { const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result); r.onerror = rej; });
 
         async function submitCuti() {
+            const btn = document.querySelector('#section-leave .btn-primary.btn-block');
             const tgl = document.getElementById('tgl_mulai').value, als = document.getElementById('alasan').value, jenis = document.getElementById('jenis_cuti').value;
             if (!tgl || !als) { alert('Lengkapi tanggal dan alasan!'); return; }
             let attachment = null;
             if (jenis === 'Cuti Sakit') { const f = document.getElementById('surat_dokter'); if (f.files.length === 0) { alert('Wajib upload surat dokter!'); return; } attachment = await toBase64(f.files[0]); }
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Mengirim...';
             try {
                 const res = await fetch('/api/v1/leave/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: user.id, jenis, tanggal: tgl, alasan: als, attachment }) });
                 const r = await res.json(); alert(r.message); if (r.status === 'success') loadMyLeaves();
             } catch (e) { alert('Server offline!'); }
+            btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Kirim Pengajuan';
         }
 
         async function loadMyLeaves() {
             const tbody = document.getElementById('my-leave-body');
+            tbody.innerHTML = loadingRow(6);
             try {
                 const res = await fetch('/api/v1/leave/my/' + user.id); const data = await res.json();
                 if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan.</td></tr>'; return; }
@@ -233,7 +248,7 @@
             const el = document.getElementById('payslip-content');
             const actions = document.getElementById('payslip-actions');
             if (!month) { alert('Pilih bulan.'); return; }
-            el.innerHTML = '<p style="color:var(--text-light);">Memuat...</p>';
+            el.innerHTML = '<div style="text-align:center;padding:20px;"><span class="spinner"></span> Memuat data...</div>';
             try {
                 const res = await fetch('/api/v1/payroll/' + user.id + '?month=' + month); const d = await res.json();
                 if (!d.user) { el.innerHTML = '<p>Data tidak ditemukan.</p>'; actions.style.display = 'none'; return; }

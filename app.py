@@ -66,6 +66,8 @@ def init_db():
                 overtime_hours INTEGER DEFAULT 0,
                 latitude REAL,
                 longitude REAL,
+                foto_masuk TEXT,
+                foto_keluar TEXT,
                 status TEXT DEFAULT 'Hadir',
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
@@ -95,6 +97,8 @@ def init_db():
             ('overtime_hours', 'INTEGER DEFAULT 0'),
             ('latitude', 'REAL'),
             ('longitude', 'REAL'),
+            ('foto_masuk', 'TEXT'),
+            ('foto_keluar', 'TEXT'),
         ]:
             try:
                 conn.execute(f"ALTER TABLE attendance_logs ADD COLUMN {col} {spec}")
@@ -134,6 +138,21 @@ def _calc_overtime(jam_keluar):
     pn = JAM_KELUAR_NORMAL.split(':')
     diff = (int(pk[0]) * 60 + int(pk[1])) - (int(pn[0]) * 60 + int(pn[1]))
     return max(0, diff // 60)
+
+
+def _upload_photo(data_url, folder="AttendancePhoto"):
+    """Upload a base64 image to Cloudinary and return the secure URL."""
+    if not data_url or not data_url.startswith('data:'):
+        return None
+    try:
+        result = cloudinary.uploader.upload(
+            data_url, folder=folder, resource_type="image",
+            transformation={"width": 480, "height": 480, "crop": "limit", "quality": "auto"}
+        )
+        return result.get('secure_url')
+    except Exception as e:
+        print(f"[Cloudinary] Foto upload gagal: {e}")
+        return None
 
 
 # ─── LOGIN ────────────────────────────────────────────────
@@ -232,20 +251,22 @@ def verify_absensi():
                 (found['id'], tgl)
             ).fetchone()
 
+            foto_url = _upload_photo(image_data)
+
             if absensi_type == 'Masuk':
                 if log:
                     return jsonify({"status": "error", "message": "Sudah absen masuk hari ini"}), 200
                 conn.execute(
-                    "INSERT INTO attendance_logs (user_id, tanggal, jam_masuk, latitude, longitude) VALUES (?, ?, ?, ?, ?)",
-                    (found['id'], tgl, jam, lat, lng)
+                    "INSERT INTO attendance_logs (user_id, tanggal, jam_masuk, latitude, longitude, foto_masuk) VALUES (?, ?, ?, ?, ?, ?)",
+                    (found['id'], tgl, jam, lat, lng, foto_url)
                 )
             else:
                 if not log:
                     return jsonify({"status": "error", "message": "Belum absen masuk hari ini"}), 200
                 ot = _calc_overtime(jam)
                 conn.execute(
-                    "UPDATE attendance_logs SET jam_keluar = ?, overtime_hours = ?, latitude = COALESCE(latitude, ?), longitude = COALESCE(longitude, ?) WHERE id = ?",
-                    (jam, ot, lat, lng, log['id'])
+                    "UPDATE attendance_logs SET jam_keluar = ?, overtime_hours = ?, latitude = COALESCE(latitude, ?), longitude = COALESCE(longitude, ?), foto_keluar = ? WHERE id = ?",
+                    (jam, ot, lat, lng, foto_url, log['id'])
                 )
 
             conn.commit()
@@ -310,7 +331,7 @@ def get_employee_data(user_id):
             (user_id,)
         ).fetchone()
         logs = conn.execute(
-            "SELECT tanggal, jam_masuk, jam_keluar, overtime_hours, latitude, longitude, status FROM attendance_logs WHERE user_id = ? ORDER BY tanggal DESC",
+            "SELECT tanggal, jam_masuk, jam_keluar, overtime_hours, latitude, longitude, foto_masuk, foto_keluar, status FROM attendance_logs WHERE user_id = ? ORDER BY tanggal DESC",
             (user_id,)
         ).fetchall()
         return jsonify({
@@ -367,7 +388,8 @@ def all_attendance():
     try:
         rows = conn.execute("""
             SELECT a.tanggal, a.jam_masuk, a.jam_keluar, a.overtime_hours,
-                   a.latitude, a.longitude, a.status, u.nama, u.nik
+                   a.latitude, a.longitude, a.foto_masuk, a.foto_keluar,
+                   a.status, u.nama, u.nik
             FROM attendance_logs a JOIN users u ON a.user_id = u.id
             WHERE strftime('%Y-%m', a.tanggal) = ?
             ORDER BY a.tanggal DESC, a.jam_masuk DESC
