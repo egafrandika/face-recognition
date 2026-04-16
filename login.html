@@ -16,7 +16,7 @@
                 <p>Sistem Informasi Absensi & Payroll berbasis Face Recognition. Gunakan kamera untuk login atau masuk secara manual sebagai Admin.</p>
                 <div style="margin-top:40px;padding:20px;background:rgba(255,255,255,0.08);border-radius:12px;">
                     <p style="font-size:0.85rem;opacity:0.8;"><i class="fas fa-info-circle"></i> <b>Login Manual Admin</b></p>
-                    <p style="font-size:0.85rem;opacity:0.6;margin-top:4px;">NIK: ADMIN001 &nbsp;|&nbsp; Password: admin123</p>
+                    <p style="font-size:0.85rem;opacity:0.6;margin-top:4px;">NIP: ADMIN001 &nbsp;|&nbsp; Password: admin123</p>
                 </div>
             </div>
         </div>
@@ -47,8 +47,8 @@
 
                 <div id="manual-login" style="display:none;margin-top:20px;text-align:left;">
                     <div class="form-group">
-                        <label>NIK</label>
-                        <input type="text" id="manual-nik" placeholder="Masukkan NIK">
+                        <label>NIP (Nomor Induk Pegawai)</label>
+                        <input type="text" id="manual-nip" placeholder="Contoh: ADMIN001 atau NIP2604-001">
                     </div>
                     <div class="form-group">
                         <label>Password</label>
@@ -60,7 +60,10 @@
                     <p id="manual-status" style="margin-top:12px;font-weight:600;text-align:center;min-height:24px;"></p>
                 </div>
 
-                <div style="margin-top:24px;">
+                <div style="margin-top:24px;display:flex;flex-direction:column;gap:10px;">
+                    <a href="registrasi.html" style="color:var(--secondary);text-decoration:none;font-size:0.9rem;font-weight:600;">
+                        <i class="fas fa-user-plus"></i> Belum terdaftar? Registrasi pegawai (wajah + nama)
+                    </a>
                     <a href="index.html" style="color:var(--text-light);text-decoration:none;font-size:0.85rem;">
                         <i class="fas fa-arrow-left"></i> Kembali ke Beranda
                     </a>
@@ -87,8 +90,9 @@
             status.textContent = 'Memverifikasi wajah...';
             status.style.color = '#3b82f6';
 
+            if (!isCameraReady('login-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan.'; status.style.color = '#ef4444'; return; }
             const img = await getImageDataUrlAsync('login-video');
-            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; return; }
+            if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; return; }
 
             try {
                 const res = await fetch('/api/v1/login/face', {
@@ -112,16 +116,16 @@
         }
 
         async function loginManual() {
-            const nik = document.getElementById('manual-nik').value.trim();
+            const nip = document.getElementById('manual-nip').value.trim();
             const pw = document.getElementById('manual-password').value;
             const status = document.getElementById('manual-status');
-            if (!nik || !pw) { status.textContent = 'Masukkan NIK dan Password'; status.style.color = '#ef4444'; return; }
+            if (!nip || !pw) { status.textContent = 'Masukkan NIP dan Password'; status.style.color = '#ef4444'; return; }
 
             try {
                 const res = await fetch('/api/v1/login/manual', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nik, password: pw })
+                    body: JSON.stringify({ nip, password: pw })
                 });
                 const r = await res.json();
                 if (r.status === 'success') {

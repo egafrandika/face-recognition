@@ -98,7 +98,7 @@
 
                 document.getElementById('user-info').innerHTML = `
                     <p style="margin:4px 0;"><b>Nama</b>: ${data.user.nama}</p>
-                    <p style="margin:4px 0;"><b>NIK</b>: ${data.user.nik}</p>
+                    <p style="margin:4px 0;"><b>NIP</b>: ${data.user.nip || data.user.nik || '-'}</p>
                 `;
                 const tbody = document.getElementById('log-table-body');
 

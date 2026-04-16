@@ -44,9 +44,9 @@ def load_test_image(path=None):
 def test_register(image_b64):
     print("\n--- Register Employee ---")
     resp = requests.post(f"{API_BASE}/api/v1/face/register", json={
-        "nik": "TEST001",
         "nama": "Test Karyawan",
-        "gaji": 8500000,
+        "gaji_pokok": 8500000,
+        "tunjangan_tipe": "staff",
         "image": image_b64
     })
     print(f"Status: {resp.status_code}")

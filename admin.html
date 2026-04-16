@@ -42,11 +42,12 @@
                         <div class="card-header"><h2><i class="fas fa-user-plus"></i> Enrollment Karyawan Baru</h2></div>
                         <div class="grid-2">
                             <div>
-                                <div class="form-group"><label>NIK</label><input type="text" id="input-nik" placeholder="Contoh: EMP001"></div>
+                                <div class="form-group"><label>NIP (Nomor Induk Pegawai)</label><input type="text" id="input-nip-preview" readonly placeholder="Otomatis" title="Nomor otomatis — tidak dapat diubah manual" style="background:var(--light);cursor:not-allowed;"></div>
                                 <div class="form-group"><label>Nama Lengkap</label><input type="text" id="input-nama" placeholder="Nama karyawan"></div>
-                                <div class="form-group"><label>Gaji Pokok (Rp/bulan)</label><input type="number" id="input-gaji" value="0"></div>
-                                <div class="form-group"><label>Gaji Harian (Rp/hari)</label><input type="number" id="input-daily" value="0"></div>
-                                <div class="form-group"><label>Tarif Lembur (Rp/jam)</label><input type="number" id="input-overtime" value="0"></div>
+                                <div class="form-group"><label>Gaji Pokok (Rp/bulan)</label><input type="number" id="input-gaji" value="0" min="0" step="1000"></div>
+                                <div class="form-group"><label>Tunjangan (per hari hadir)</label><select id="input-tunjangan-tipe"><option value="staff">Staff — Rp 25.000</option><option value="supervisor">Supervisor — Rp 35.000</option></select></div>
+                                <div class="form-group"><label>Tarif lembur (Rp/jam)</label><input type="text" id="input-overtime-display" readonly tabindex="-1" style="background:var(--light);cursor:not-allowed;" title="(gaji pokok ÷ 173) × 1,5"></div>
+                                <p style="font-size:0.78rem;color:var(--text-light);margin:-8px 0 12px;">Lembur: <code>(gaji pokok ÷ 173) × 1,5</code> — dihitung otomatis.</p>
                                 <button class="btn btn-primary btn-block" id="btn-enroll"><i class="fas fa-camera"></i> Ambil Sampel & Daftarkan</button>
                             </div>
                             <div style="text-align:center;">
@@ -62,7 +63,7 @@
                         </div>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>No</th><th>NIK</th><th>Nama</th><th>Gaji Pokok</th><th>Harian</th><th>Lembur/Jam</th><th>Tgl Daftar</th><th>Aksi</th></tr></thead>
+                                <thead><tr><th>No</th><th>NIP</th><th>Nama</th><th>Status HR</th><th>Gaji Pokok</th><th>Tunjangan</th><th>Lembur/jam</th><th>Tgl Daftar</th><th>Riwayat</th><th>Aksi</th></tr></thead>
                                 <tbody id="employee-table-body"></tbody>
                             </table>
                         </div>
@@ -81,7 +82,7 @@
                         </div>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Tanggal</th><th>NIK</th><th>Nama</th><th>Foto Masuk</th><th>Foto Keluar</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th></tr></thead>
+                                <thead><tr><th>Tanggal</th><th>NIP</th><th>Nama</th><th>Foto Masuk</th><th>Foto Keluar</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th></tr></thead>
                                 <tbody id="rekap-table-body"><tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Pilih bulan lalu klik Tampilkan.</td></tr></tbody>
                             </table>
                         </div>
@@ -94,7 +95,7 @@
                         <div class="card-header"><h2><i class="fas fa-calendar-check"></i> Persetujuan Cuti Karyawan</h2></div>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Karyawan</th><th>Jenis Cuti</th><th>Tanggal</th><th>Alasan</th><th>Status</th><th>Aksi</th></tr></thead>
+                                <thead><tr><th>Karyawan</th><th>Jenis Cuti</th><th>Tanggal</th><th>Alasan</th><th>Status</th><th>Riwayat</th><th>Aksi</th></tr></thead>
                                 <tbody id="admin-list-cuti"></tbody>
                             </table>
                         </div>
@@ -145,15 +146,24 @@
         <div class="modal-content">
             <h3><i class="fas fa-edit"></i> Edit Data Karyawan</h3>
             <input type="hidden" id="edit-id">
-            <div class="form-group"><label>NIK</label><input type="text" id="edit-nik"></div>
+            <div class="form-group"><label>NIP (Nomor Induk Pegawai)</label><input type="text" id="edit-nip" readonly style="background:var(--light);cursor:not-allowed;"></div>
             <div class="form-group"><label>Nama Lengkap</label><input type="text" id="edit-nama"></div>
-            <div class="form-group"><label>Gaji Pokok (Rp/bulan)</label><input type="number" id="edit-gaji"></div>
-            <div class="form-group"><label>Gaji Harian (Rp/hari)</label><input type="number" id="edit-daily"></div>
-            <div class="form-group"><label>Tarif Lembur (Rp/jam)</label><input type="number" id="edit-overtime"></div>
+            <div class="form-group"><label>Gaji Pokok (Rp/bulan)</label><input type="number" id="edit-gaji" min="0" step="1000"></div>
+            <div class="form-group"><label>Tunjangan (per hari hadir)</label><select id="edit-tunjangan-tipe"><option value="staff">Staff — Rp 25.000</option><option value="supervisor">Supervisor — Rp 35.000</option></select></div>
+            <div class="form-group"><label>Tarif lembur (Rp/jam)</label><input type="text" id="edit-overtime-display" readonly tabindex="-1" style="background:var(--light);cursor:not-allowed;"></div>
+            <p style="font-size:0.78rem;color:var(--text-light);margin:-8px 0 12px;">Lembur: <code>(gaji pokok ÷ 173) × 1,5</code></p>
             <div style="display:flex;gap:12px;margin-top:18px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="saveEdit()">Simpan</button>
                 <button class="btn btn-outline" style="flex:1;" onclick="closeModal()">Batal</button>
             </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="history-modal">
+        <div class="modal-content" style="max-width:520px;max-height:85vh;overflow:auto;">
+            <h3 id="history-modal-title"><i class="fas fa-history"></i> Riwayat Perubahan</h3>
+            <div id="history-modal-body" style="font-size:0.88rem;color:var(--text);"></div>
+            <button type="button" class="btn btn-outline btn-block" style="margin-top:16px;" onclick="closeHistoryModal()">Tutup</button>
         </div>
     </div>
 
@@ -184,7 +194,7 @@
             document.getElementById('page-title').textContent = titles[name] || '';
             closeSidebar();
 
-            if (name === 'employees') { initCamera('admin-video', 'enroll-hint'); loadEmployees(); }
+            if (name === 'employees') { initCamera('admin-video', 'enroll-hint'); refreshNipPreview(); loadEmployees(); }
             if (name === 'rekap') loadRekap();
             if (name === 'leave') loadLeaveRequests();
             if (name === 'payslip') loadSlipEmployees();
@@ -193,6 +203,56 @@
 
         const esc = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+        const JAM_PEMBAGI_LEMBUR = 173;
+        function tarifLemburDariGaji(g) {
+            const x = parseFloat(g) || 0;
+            return (x / JAM_PEMBAGI_LEMBUR) * 1.5;
+        }
+        function fmtTarifLembur(g) {
+            const v = tarifLemburDariGaji(g);
+            return 'Rp ' + v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+        }
+        function updateEnrollOvertimeField() {
+            const el = document.getElementById('input-overtime-display');
+            if (el) el.value = fmtTarifLembur(document.getElementById('input-gaji').value);
+        }
+        function updateEditOvertimeField() {
+            const el = document.getElementById('edit-overtime-display');
+            if (el) el.value = fmtTarifLembur(document.getElementById('edit-gaji').value);
+        }
+        function labelTunjangan(t) {
+            return (t === 'supervisor') ? 'Supervisor' : 'Staff';
+        }
+        async function refreshNipPreview() {
+            const el = document.getElementById('input-nip-preview');
+            if (!el) return;
+            try {
+                const res = await fetch('/api/v1/nip/preview');
+                const j = await res.json();
+                el.value = j.nip || '';
+                el.placeholder = j.nip || 'Otomatis';
+            } catch (e) { el.placeholder = '(server)'; }
+        }
+        function closeHistoryModal() { document.getElementById('history-modal').classList.remove('active'); }
+        async function openHistoryModal(entity, recordId, title) {
+            document.getElementById('history-modal').classList.add('active');
+            document.getElementById('history-modal-title').innerHTML = '<i class="fas fa-history"></i> ' + (title || 'Riwayat');
+            const body = document.getElementById('history-modal-body');
+            body.innerHTML = '<div style="text-align:center;padding:16px;"><span class="spinner"></span> Memuat...</div>';
+            try {
+                const res = await fetch('/api/v1/history?entity=' + encodeURIComponent(entity) + '&record_id=' + recordId);
+                const data = await res.json();
+                const rows = data.history || [];
+                if (rows.length === 0) {
+                    body.innerHTML = '<p style="color:var(--text-light);">Belum ada riwayat perubahan tercatat.</p>';
+                    return;
+                }
+                body.innerHTML = '<table style="width:100%;font-size:0.85rem;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Tanggal</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Oleh</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Aksi</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Detail</th></tr></thead><tbody>' +
+                    rows.map(h => '<tr><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap;">' + (h.created_at || '-') + '</td><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;">' + (h.changed_by_name || '—') + '</td><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;">' + (h.action || '-') + '</td><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;">' + (h.detail || '-') + '</td></tr>').join('') + '</tbody></table>';
+            } catch (e) {
+                body.innerHTML = '<p style="color:var(--danger);">Gagal memuat riwayat.</p>';
+            }
+        }
 
         function getLocation() {
             return new Promise(resolve => {
@@ -224,21 +284,40 @@
 
         function loadingRow(cols) { return '<tr class="loading-row"><td colspan="' + cols + '"><span class="spinner"></span> Memuat data...</td></tr>'; }
 
+        async function hrVerifyEmployee(id, nama) {
+            if (!confirm('Setujui bahwa identitas dan wajah "' + nama + '" sesuai pegawai yang benar?')) return;
+            try {
+                const res = await fetch('/api/v1/employee/hr-verify/' + id, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor_user_id: user.id, actor_name: user.nama })
+                });
+                const r = await res.json();
+                alert(r.message);
+                if (r.status === 'success' || res.ok) loadEmployees();
+            } catch (e) { alert('Gagal memverifikasi.'); }
+        }
+
         // ─── ENROLLMENT ───
         document.getElementById('btn-enroll').onclick = async function() {
             const btn = this;
-            const nik = document.getElementById('input-nik').value.trim();
             const nama = document.getElementById('input-nama').value.trim();
-            if (!nik || !nama) { alert('NIK dan Nama wajib diisi!'); return; }
+            if (!nama) { alert('Nama wajib diisi!'); return; }
+            if (!isCameraReady('admin-video')) { alertCameraRequired(); return; }
             const img = await getImageDataUrlAsync('admin-video');
-            if (!img) { alert('Kamera belum siap.'); return; }
+            if (!img) { alert('Kamera belum siap. Pastikan izin kamera aktif.'); return; }
             btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Mendaftarkan...';
             try {
                 const res = await fetch('/api/v1/face/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nik, nama, image: img, gaji_pokok: parseFloat(document.getElementById('input-gaji').value) || 0, daily_rate: parseFloat(document.getElementById('input-daily').value) || 0, overtime_rate: parseFloat(document.getElementById('input-overtime').value) || 0 })
+                    body: JSON.stringify({
+                        nama, image: img,
+                        gaji_pokok: parseFloat(document.getElementById('input-gaji').value) || 0,
+                        tunjangan_tipe: document.getElementById('input-tunjangan-tipe').value,
+                        actor_user_id: user.id, actor_name: user.nama
+                    })
                 });
-                const r = await res.json(); alert(r.message);
-                if (r.status === 'success') { document.getElementById('input-nik').value = ''; document.getElementById('input-nama').value = ''; loadEmployees(); }
+                const r = await res.json(); alert(r.message + (r.nip ? ' NIP: ' + r.nip : ''));
+                if (r.status === 'success') { document.getElementById('input-nama').value = ''; refreshNipPreview(); loadEmployees(); }
             } catch (e) { alert('Gagal menghubungi server.'); }
             btn.disabled = false; btn.innerHTML = '<i class="fas fa-camera"></i> Ambil Sampel & Daftarkan';
         };
@@ -247,25 +326,45 @@
         async function loadEmployees() {
             const tbody = document.getElementById('employee-table-body');
             const countEl = document.getElementById('employee-count');
-            tbody.innerHTML = loadingRow(8);
+            tbody.innerHTML = loadingRow(10);
             try {
                 const res = await fetch('/api/v1/employees'); const data = await res.json();
                 countEl.textContent = 'Total: ' + data.total;
-                if (data.total === 0) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada karyawan.</td></tr>'; return; }
-                tbody.innerHTML = data.employees.map((e, i) => '<tr><td>' + (i+1) + '</td><td>' + e.nik + '</td><td>' + e.nama + '</td><td>' + rp(e.gaji_pokok) + '</td><td>' + rp(e.daily_rate) + '</td><td>' + rp(e.overtime_rate) + '</td><td>' + (e.created_at ? e.created_at.split(' ')[0] : '-') + '</td><td style="white-space:nowrap;"><button class="btn btn-primary btn-sm" onclick="openEdit(' + e.id + ',\'' + esc(e.nik) + '\',\'' + esc(e.nama) + '\',' + e.gaji_pokok + ',' + e.daily_rate + ',' + e.overtime_rate + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-danger btn-sm" onclick="deleteEmployee(' + e.id + ',\'' + esc(e.nama) + '\')"><i class="fas fa-trash"></i></button></td></tr>').join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                if (data.total === 0) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada karyawan.</td></tr>'; return; }
+                tbody.innerHTML = data.employees.map((e, i) => {
+                    const nip = e.nip || e.nik || '-';
+                    const tipe = e.tunjangan_tipe || 'staff';
+                    const tnj = e.tunjangan_per_hari != null ? e.tunjangan_per_hari : e.daily_rate;
+                    const ot = e.tarif_lembur_per_jam != null ? e.tarif_lembur_per_jam : e.overtime_rate;
+                    const pending = Number(e.pending_hr_verification) === 1;
+                    const statusCell = pending
+                        ? '<span class="badge" style="background:#fef3c7;color:#92400e;">Menunggu HR</span>'
+                        : '<span class="badge hadir">Terverifikasi</span>';
+                    const verifyBtn = pending
+                        ? ' <button type="button" class="btn btn-success btn-sm" onclick="hrVerifyEmployee(' + e.id + ',\'' + esc(e.nama) + '\')" title="Verifikasi identitas"><i class="fas fa-user-check"></i></button>'
+                        : '';
+                    return '<tr><td>' + (i+1) + '</td><td>' + nip + '</td><td>' + e.nama + '</td><td>' + statusCell + '</td><td>' + rp(e.gaji_pokok) + '</td><td>' + labelTunjangan(tipe) + '<br><small style="color:var(--text-light);">' + rp(tnj) + '/hari</small></td><td>' + rp(ot) + '</td><td>' + (e.created_at ? e.created_at.split(' ')[0] : '-') + '</td><td><button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(\'users\',' + e.id + ',\'Riwayat karyawan\')" title="Riwayat"><i class="fas fa-history"></i></button></td><td style="white-space:nowrap;">' + verifyBtn + ' <button class="btn btn-primary btn-sm" onclick="openEdit(' + e.id + ',\'' + esc(nip) + '\',\'' + esc(e.nama) + '\',' + e.gaji_pokok + ',\'' + esc(tipe) + '\')"><i class="fas fa-edit"></i></button> <button class="btn btn-danger btn-sm" onclick="deleteEmployee(' + e.id + ',\'' + esc(e.nama) + '\')"><i class="fas fa-trash"></i></button></td></tr>';
+                }).join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
-        function openEdit(id, nik, nama, gaji, daily, ot) {
-            document.getElementById('edit-id').value = id; document.getElementById('edit-nik').value = nik; document.getElementById('edit-nama').value = nama;
-            document.getElementById('edit-gaji').value = gaji; document.getElementById('edit-daily').value = daily; document.getElementById('edit-overtime').value = ot;
+        function openEdit(id, nip, nama, gaji, tunjanganTipe) {
+            document.getElementById('edit-id').value = id; document.getElementById('edit-nip').value = nip; document.getElementById('edit-nama').value = nama;
+            document.getElementById('edit-gaji').value = gaji;
+            document.getElementById('edit-tunjangan-tipe').value = (tunjanganTipe === 'supervisor') ? 'supervisor' : 'staff';
+            updateEditOvertimeField();
             document.getElementById('edit-modal').classList.add('active');
         }
         function closeModal() { document.getElementById('edit-modal').classList.remove('active'); }
 
         async function saveEdit() {
-            const data = { nik: document.getElementById('edit-nik').value, nama: document.getElementById('edit-nama').value, gaji_pokok: parseFloat(document.getElementById('edit-gaji').value) || 0, daily_rate: parseFloat(document.getElementById('edit-daily').value) || 0, overtime_rate: parseFloat(document.getElementById('edit-overtime').value) || 0 };
-            if (!data.nik || !data.nama) { alert('NIK dan Nama wajib diisi!'); return; }
+            const data = {
+                nama: document.getElementById('edit-nama').value,
+                gaji_pokok: parseFloat(document.getElementById('edit-gaji').value) || 0,
+                tunjangan_tipe: document.getElementById('edit-tunjangan-tipe').value,
+                actor_user_id: user.id, actor_name: user.nama
+            };
+            if (!data.nama || !data.nama.trim()) { alert('Nama wajib diisi!'); return; }
             try {
                 const res = await fetch('/api/v1/employee/update/' + document.getElementById('edit-id').value, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
                 const r = await res.json(); alert(r.message); if (r.status === 'success') { closeModal(); loadEmployees(); }
@@ -274,7 +373,14 @@
 
         async function deleteEmployee(id, nama) {
             if (!confirm('Yakin ingin menghapus "' + nama + '"?')) return;
-            try { const res = await fetch('/api/v1/employee/delete/' + id, { method: 'DELETE' }); const r = await res.json(); alert(r.message); if (r.status === 'success') loadEmployees(); } catch (e) { alert('Gagal.'); }
+            try {
+                const res = await fetch('/api/v1/employee/delete/' + id, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor_user_id: user.id, actor_name: user.nama })
+                });
+                const r = await res.json(); alert(r.message); if (r.status === 'success') loadEmployees();
+            } catch (e) { alert('Gagal.'); }
         }
 
         // ─── REKAP KEHADIRAN ───
@@ -286,24 +392,31 @@
             try {
                 const res = await fetch('/api/v1/attendance/all?month=' + month); const data = await res.json();
                 if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Tidak ada data kehadiran.</td></tr>'; return; }
-                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + l.nik + '</td><td>' + l.nama + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + ' jam</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td></tr>').join('');
+                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + (l.nip || l.nik || '-') + '</td><td>' + l.nama + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + ' jam</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td></tr>').join('');
             } catch (e) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
         // ─── LEAVE APPROVAL ───
         async function loadLeaveRequests() {
             const tbody = document.getElementById('admin-list-cuti');
-            tbody.innerHTML = loadingRow(6);
+            tbody.innerHTML = loadingRow(7);
             try {
                 const res = await fetch('/api/v1/leave/list'); const data = await res.json();
-                if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan cuti.</td></tr>'; return; }
-                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.karyawan + '</td><td>' + c.jenis_cuti + '</td><td>' + c.tanggal + '</td><td><small>' + (c.alasan || '-') + '</small>' + (c.attachment ? '<br>' + attachPreview(c.attachment) : '') + '</td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td style="white-space:nowrap;">' + (c.status === 'Pending' ? '<button class="btn btn-success btn-sm" onclick="handleLeave(' + c.id + ',\'Approved\')"><i class="fas fa-check"></i></button> <button class="btn btn-danger btn-sm" onclick="handleLeave(' + c.id + ',\'Rejected\')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                if (!data.leaves || data.leaves.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada pengajuan cuti.</td></tr>'; return; }
+                tbody.innerHTML = data.leaves.map(c => '<tr><td>' + c.karyawan + '</td><td>' + c.jenis_cuti + '</td><td>' + c.tanggal + '</td><td><small>' + (c.alasan || '-') + '</small>' + (c.attachment ? '<br>' + attachPreview(c.attachment) : '') + '</td><td><span class="badge ' + c.status.toLowerCase() + '">' + c.status + '</span></td><td><button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(\'leaves\',' + c.id + ',\'Cuti\')" title="Riwayat"><i class="fas fa-history"></i></button></td><td style="white-space:nowrap;">' + (c.status === 'Pending' ? '<button class="btn btn-success btn-sm" onclick="handleLeave(' + c.id + ',\'Approved\')"><i class="fas fa-check"></i></button> <button class="btn btn-danger btn-sm" onclick="handleLeave(' + c.id + ',\'Rejected\')"><i class="fas fa-times"></i></button>' : '-') + '</td></tr>').join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
         async function handleLeave(id, action) {
             if (!confirm('Yakin?')) return;
-            try { await fetch('/api/v1/leave/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leave_id: id, action }) }); loadLeaveRequests(); } catch (e) { alert('Gagal.'); }
+            try {
+                await fetch('/api/v1/leave/approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ leave_id: id, action, actor_user_id: user.id, actor_name: user.nama })
+                });
+                loadLeaveRequests();
+            } catch (e) { alert('Gagal.'); }
         }
 
         // ─── SLIP GAJI (HR) ───
@@ -311,7 +424,7 @@
             const sel = document.getElementById('slip-employee');
             try {
                 const res = await fetch('/api/v1/employees'); const data = await res.json();
-                sel.innerHTML = '<option value="">Pilih Karyawan</option>' + data.employees.map(e => '<option value="' + e.id + '">' + e.nama + ' (' + e.nik + ')</option>').join('');
+                sel.innerHTML = '<option value="">Pilih Karyawan</option>' + data.employees.map(e => '<option value="' + e.id + '">' + e.nama + ' (' + (e.nip || e.nik) + ')</option>').join('');
             } catch (e) {}
         }
 
@@ -328,7 +441,12 @@
             try {
                 const res = await fetch('/api/v1/payroll/' + uid + '?month=' + month); const d = await res.json();
                 if (!d.user) { el.innerHTML = '<p>Data tidak ditemukan.</p>'; actions.style.display = 'none'; return; }
-                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIK:</b> ' + d.user.nik + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Kehadiran (' + d.total_days + 'hr &times; ' + rp(d.user.daily_rate) + ')</td><td style="text-align:right;">' + rp(d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(d.user.overtime_rate) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>TOTAL DITERIMA</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.grand_total) + '</td></tr></tbody></table></div></div>';
+                const nipShow = d.user.nip || d.user.nik || '-';
+                const tnj = d.tunjangan_per_hari != null ? d.tunjangan_per_hari : d.user.tunjangan_per_hari;
+                const otj = d.user.tarif_lembur_per_jam != null ? d.user.tarif_lembur_per_jam : d.user.overtime_rate;
+                const tipeLbl = labelTunjangan(d.user.tunjangan_tipe || 'staff');
+                const lemburNote = d.lembur_formula || '(gaji pokok ÷ 173) × 1,5';
+                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIP:</b> ' + nipShow + '</p><p><b>Tunjangan:</b> ' + tipeLbl + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><p style="font-size:0.78rem;color:var(--text-light);margin-bottom:8px;">Lembur: <code>' + lemburNote + '</code>. PPh21 perkiraan (progresif tahunan).</p><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Tunjangan (' + d.total_days + ' hr &times; ' + rp(tnj) + ')</td><td style="text-align:right;">' + rp(d.tunjangan_total || d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(otj) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr><td>Penghasilan bruto (bulan)</td><td style="text-align:right;">' + rp(d.bruto_bulan) + '</td></tr><tr><td>PPh21 (perkiraan bulanan)</td><td style="text-align:right;">&minus; ' + rp(d.pph21_bulanan) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>Gaji bersih diterima</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.gaji_bersih_setelah_pajak) + '</td></tr></tbody></table></div></div>';
                 actions.style.display = 'flex';
             } catch (e) { el.innerHTML = '<p style="color:var(--danger);">Gagal memuat data.</p>'; actions.style.display = 'none'; }
         }
@@ -345,8 +463,9 @@
             const btns = document.querySelectorAll('#section-attendance .btn-success, #section-attendance .btn-warning');
             btns.forEach(b => b.disabled = true);
             status.innerHTML = '<span class="spinner"></span> Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
+            if (!isCameraReady('admin-att-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan.'; status.style.color = '#ef4444'; btns.forEach(b => b.disabled = false); return; }
             const [img, loc] = await Promise.all([getImageDataUrlAsync('admin-att-video'), getLocation()]);
-            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; btns.forEach(b => b.disabled = false); return; }
+            if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; btns.forEach(b => b.disabled = false); return; }
             try {
                 const res = await fetch('/api/v1/verify-liveness', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: img, type, user_id: user.id, latitude: loc.latitude || null, longitude: loc.longitude || null }) });
@@ -358,8 +477,9 @@
         async function registerAdminFace() {
             const status = document.getElementById('admin-att-status');
             status.textContent = 'Mengambil sampel wajah...'; status.style.color = '#3b82f6';
+            if (!isCameraReady('admin-att-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan.'; status.style.color = '#ef4444'; return; }
             const img = await getImageDataUrlAsync('admin-att-video');
-            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; return; }
+            if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; return; }
             try {
                 const res = await fetch('/api/v1/admin/register-face', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: img, user_id: user.id }) });
                 const r = await res.json(); status.textContent = r.message; status.style.color = r.status === 'success' ? '#10b981' : '#ef4444';
@@ -367,7 +487,11 @@
         }
 
         // ─── INIT ───
+        document.getElementById('input-gaji').addEventListener('input', updateEnrollOvertimeField);
+        document.getElementById('edit-gaji').addEventListener('input', updateEditOvertimeField);
+        updateEnrollOvertimeField();
         initCamera('admin-video', 'enroll-hint');
+        refreshNipPreview();
         loadEmployees();
     </script>
 </body>

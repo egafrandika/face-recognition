@@ -27,6 +27,92 @@ CORS(app)
 DB_PATH = os.path.join(ROOT_DIR, 'payrollface.db')
 _STATIC_EXT = {'.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.json'}
 JAM_KELUAR_NORMAL = "17:00:00"
+# Jam kerja efektif per bulan (pembagi upah lembur umum)
+JAM_KERJA_BULAN_PEMBAGI = 173
+TUNJANGAN_STAFF_PER_HARI = 25_000
+TUNJANGAN_SUPERVISOR_PER_HARI = 35_000
+
+# PPh21 tarif progresif (penghasilan kena pajak per tahun, UU umum)
+PKP_TIER1_MAX = 60_000_000   # s/d Rp60 jt: 5%
+PKP_TIER2_MAX = 250_000_000  # di atas Rp60 jt s/d Rp250 jt: 15%
+
+
+def _pph21_annual(pkp_tahunan):
+    """PPh21 tahunan berdasarkan PKP (penghasilan kena pajak) per tahun."""
+    pkp = max(0.0, float(pkp_tahunan))
+    if pkp <= PKP_TIER1_MAX:
+        return pkp * 0.05
+    if pkp <= PKP_TIER2_MAX:
+        return PKP_TIER1_MAX * 0.05 + (pkp - PKP_TIER1_MAX) * 0.15
+    # Di atas Rp250 jt: lapisan ketiga umum 25% (kelanjutan tarif progresif)
+    return (
+        PKP_TIER1_MAX * 0.05
+        + (PKP_TIER2_MAX - PKP_TIER1_MAX) * 0.15
+        + (pkp - PKP_TIER2_MAX) * 0.25
+    )
+
+
+def _next_nip(conn):
+    """NIP format: NIP + YY + MM + '-' + urutan 3 digit (per bulan)."""
+    now = datetime.now()
+    yy = now.strftime('%y')
+    mm = now.strftime('%m')
+    prefix = f'NIP{yy}{mm}-'
+    row = conn.execute(
+        "SELECT nip FROM users WHERE nip LIKE ? ORDER BY nip DESC LIMIT 1",
+        (prefix + '%',)
+    ).fetchone()
+    nxt = 1
+    if row and row['nip']:
+        val = row['nip']
+        if val.startswith(prefix) and len(val) > len(prefix):
+            try:
+                nxt = int(val[len(prefix):]) + 1
+            except ValueError:
+                pass
+    return f'{prefix}{nxt:03d}'
+
+
+def _normalize_tunjangan_tipe(raw):
+    t = (raw or 'staff').strip().lower()
+    return 'supervisor' if t == 'supervisor' else 'staff'
+
+
+def _tunjangan_per_hari(tipe):
+    return float(
+        TUNJANGAN_SUPERVISOR_PER_HARI
+        if _normalize_tunjangan_tipe(tipe) == 'supervisor'
+        else TUNJANGAN_STAFF_PER_HARI
+    )
+
+
+def _tarif_lembur_per_jam(gaji_pokok):
+    """Upah lembur per jam = (gaji pokok / 173) × 1,5"""
+    g = float(gaji_pokok or 0)
+    return (g / JAM_KERJA_BULAN_PEMBAGI) * 1.5 if g > 0 else 0.0
+
+
+def _sync_karyawan_payroll_fields(conn):
+    """Samakan daily_rate & overtime_rate dengan tunjangan tipe dan formula lembur."""
+    rows = conn.execute(
+        "SELECT id, gaji_pokok, tunjangan_tipe FROM users WHERE role = 'karyawan'"
+    ).fetchall()
+    for r in rows:
+        tp = _normalize_tunjangan_tipe(r['tunjangan_tipe'])
+        daily = _tunjangan_per_hari(tp)
+        ot = _tarif_lembur_per_jam(r['gaji_pokok'])
+        conn.execute(
+            "UPDATE users SET tunjangan_tipe = ?, daily_rate = ?, overtime_rate = ? WHERE id = ?",
+            (tp, daily, ot, r['id'])
+        )
+
+
+def _log_change(conn, entity, record_id, action, actor_id, actor_name, detail):
+    conn.execute(
+        """INSERT INTO change_history (entity, record_id, action, changed_by_user_id, changed_by_name, detail)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (entity, record_id, action, actor_id, actor_name or None, detail or '')
+    )
 
 
 def get_db():
@@ -81,6 +167,17 @@ def init_db():
                 status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending','Approved','Rejected','Cancelled')),
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS change_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity TEXT NOT NULL,
+                record_id INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                changed_by_user_id INTEGER,
+                changed_by_name TEXT,
+                detail TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_change_history_lookup ON change_history (entity, record_id);
         """)
 
         for col, spec in [
@@ -105,11 +202,43 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
-        admin = conn.execute("SELECT id, password FROM users WHERE nik = 'ADMIN001'").fetchone()
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN nip TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        conn.execute("UPDATE users SET nip = nik WHERE nip IS NULL OR nip = ''")
+
+        try:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN tunjangan_tipe TEXT DEFAULT 'staff'"
+            )
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            "UPDATE users SET tunjangan_tipe = 'staff' WHERE tunjangan_tipe IS NULL OR TRIM(tunjangan_tipe) = ''"
+        )
+        conn.execute(
+            """UPDATE users SET tunjangan_tipe = 'supervisor'
+               WHERE role = 'karyawan' AND COALESCE(daily_rate, 0) >= 30000"""
+        )
+        _sync_karyawan_payroll_fields(conn)
+
+        try:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN pending_hr_verification INTEGER DEFAULT 0"
+            )
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            "UPDATE users SET pending_hr_verification = 0 WHERE pending_hr_verification IS NULL"
+        )
+
+        admin = conn.execute("SELECT id, password FROM users WHERE nik = 'ADMIN001' OR nip = 'ADMIN001'").fetchone()
         if not admin:
             conn.execute(
-                "INSERT INTO users (nik, nama, role, password, gaji_pokok) VALUES (?, ?, ?, ?, ?)",
-                ('ADMIN001', 'Admin HRD', 'admin', _hash('admin123'), 0)
+                "INSERT INTO users (nik, nama, nip, role, password, gaji_pokok) VALUES (?, ?, ?, ?, ?, ?)",
+                ('ADMIN001', 'Admin HRD', 'ADMIN001', 'admin', _hash('admin123'), 0)
             )
         elif not admin['password']:
             conn.execute("UPDATE users SET password = ? WHERE id = ?", (_hash('admin123'), admin['id']))
@@ -129,6 +258,27 @@ def _decode_face(image_data):
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     encodings = face_recognition.face_encodings(rgb)
     return encodings[0] if encodings else None
+
+
+# Sama seperti login / absensi agar perilaku konsisten
+FACE_COMPARE_TOLERANCE = 0.5
+
+
+def _find_user_by_face(conn, face_vector):
+    """Jika wajah cocok dengan pengguna yang sudah punya encoding, kembalikan baris user; jika tidak, None."""
+    rows = conn.execute(
+        "SELECT id, nip, nik, nama, role, face_encoding FROM users WHERE face_encoding IS NOT NULL"
+    ).fetchall()
+    for r in rows:
+        try:
+            db_enc = np.array(json.loads(r['face_encoding']))
+            if face_recognition.compare_faces(
+                [db_enc], face_vector, tolerance=FACE_COMPARE_TOLERANCE
+            )[0]:
+                return r
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+    return None
 
 
 def _calc_overtime(jam_keluar):
@@ -168,14 +318,22 @@ def login_face():
         conn = get_db()
         try:
             users = conn.execute(
-                "SELECT id, nik, nama, role, face_encoding FROM users WHERE face_encoding IS NOT NULL"
+                """SELECT id, nip, nik, nama, role, face_encoding, pending_hr_verification
+                   FROM users WHERE face_encoding IS NOT NULL"""
             ).fetchall()
             for u in users:
                 db_enc = np.array(json.loads(u['face_encoding']))
                 if face_recognition.compare_faces([db_enc], face, tolerance=0.5)[0]:
+                    pend = u['pending_hr_verification'] if 'pending_hr_verification' in u.keys() else 0
+                    if u['role'] == 'karyawan' and pend:
+                        return jsonify({
+                            "status": "failed",
+                            "message": "Akun belum diverifikasi HR. Tunggu persetujuan HRD atau hubungi bagian personalia."
+                        })
+                    nip_val = u['nip'] or u['nik']
                     return jsonify({
                         "status": "success",
-                        "user": {"id": u['id'], "nik": u['nik'], "nama": u['nama'], "role": u['role']}
+                        "user": {"id": u['id'], "nip": nip_val, "nama": u['nama'], "role": u['role']}
                     })
             return jsonify({"status": "failed", "message": "Wajah tidak terdaftar dalam sistem"})
         finally:
@@ -187,18 +345,29 @@ def login_face():
 @app.route('/api/v1/login/manual', methods=['POST'])
 def login_manual():
     data = request.json
-    nik = data.get('nik', '').strip()
+    ident = (data.get('nip') or data.get('nik') or '').strip()
     pw = data.get('password', '')
     conn = get_db()
     try:
-        user = conn.execute("SELECT id, nik, nama, role, password FROM users WHERE nik = ?", (nik,)).fetchone()
+        user = conn.execute(
+            """SELECT id, nip, nik, nama, role, password, pending_hr_verification
+               FROM users WHERE nip = ? OR nik = ?""",
+            (ident, ident)
+        ).fetchone()
         if not user:
-            return jsonify({"status": "failed", "message": "NIK tidak ditemukan"})
+            return jsonify({"status": "failed", "message": "NIP tidak ditemukan"})
         if user['password'] != _hash(pw):
             return jsonify({"status": "failed", "message": "Password salah"})
+        pend = user['pending_hr_verification'] if 'pending_hr_verification' in user.keys() else 0
+        if user['role'] == 'karyawan' and pend:
+            return jsonify({
+                "status": "failed",
+                "message": "Akun belum diverifikasi HR. Tunggu persetujuan HRD."
+            })
+        nip_val = user['nip'] or user['nik']
         return jsonify({
             "status": "success",
-            "user": {"id": user['id'], "nik": user['nik'], "nama": user['nama'], "role": user['role']}
+            "user": {"id": user['id'], "nip": nip_val, "nama": user['nama'], "role": user['role']}
         })
     finally:
         conn.close()
@@ -224,12 +393,14 @@ def verify_absensi():
         try:
             if user_id_hint:
                 users = conn.execute(
-                    "SELECT id, nama, face_encoding FROM users WHERE id = ? AND face_encoding IS NOT NULL",
+                    """SELECT id, nama, face_encoding, pending_hr_verification, role
+                       FROM users WHERE id = ? AND face_encoding IS NOT NULL""",
                     (user_id_hint,)
                 ).fetchall()
             else:
                 users = conn.execute(
-                    "SELECT id, nama, face_encoding FROM users WHERE face_encoding IS NOT NULL"
+                    """SELECT id, nama, face_encoding, pending_hr_verification, role
+                       FROM users WHERE face_encoding IS NOT NULL"""
                 ).fetchall()
 
             found = None
@@ -241,6 +412,13 @@ def verify_absensi():
 
             if not found:
                 return jsonify({"status": "failed", "message": "Wajah tidak cocok"}), 200
+
+            pend = found['pending_hr_verification'] if 'pending_hr_verification' in found.keys() else 0
+            if found['role'] == 'karyawan' and pend:
+                return jsonify({
+                    "status": "error",
+                    "message": "Akun belum diverifikasi HR. Absensi tidak dapat dilakukan sampai HR menyetujui identitas Anda."
+                }), 200
 
             now = datetime.now()
             tgl = now.strftime("%Y-%m-%d")
@@ -285,6 +463,15 @@ def verify_absensi():
 
 # ─── EMPLOYEE MANAGEMENT ─────────────────────────────────
 
+@app.route('/api/v1/nip/preview', methods=['GET'])
+def preview_nip():
+    conn = get_db()
+    try:
+        return jsonify({"nip": _next_nip(conn)})
+    finally:
+        conn.close()
+
+
 @app.route('/api/v1/face/register', methods=['POST'])
 def enroll_user():
     data = request.json
@@ -293,23 +480,146 @@ def enroll_user():
         if face is None:
             return jsonify({"status": "error", "message": "Wajah tidak terdeteksi pada gambar"}), 200
 
+        nama = (data.get('nama') or '').strip()
+        if not nama:
+            return jsonify({"status": "error", "message": "Nama wajib diisi"}), 200
+
+        actor_id = data.get('actor_user_id')
+        actor_name = (data.get('actor_name') or '').strip() or None
+
         conn = get_db()
         try:
-            conn.execute(
-                """INSERT INTO users (nik, nama, gaji_pokok, daily_rate, overtime_rate, face_encoding, role)
-                   VALUES (?, ?, ?, ?, ?, ?, 'karyawan')""",
-                (data['nik'], data['nama'],
-                 float(data.get('gaji_pokok', 0)),
-                 float(data.get('daily_rate', 0)),
-                 float(data.get('overtime_rate', 0)),
+            dup = _find_user_by_face(conn, face)
+            if dup:
+                nip_d = dup['nip'] or dup['nik']
+                return jsonify({
+                    "status": "error",
+                    "message": (
+                        f"Wajah ini sudah terdaftar ({nip_d} — {dup['nama']}). "
+                        "Tidak dapat mendaftarkan wajah yang sama dua kali."
+                    ),
+                }), 200
+
+            nip_new = _next_nip(conn)
+            tp = _normalize_tunjangan_tipe(data.get('tunjangan_tipe'))
+            gp = float(data.get('gaji_pokok', 0))
+            daily_amt = _tunjangan_per_hari(tp)
+            ot_rate = _tarif_lembur_per_jam(gp)
+            cur = conn.execute(
+                """INSERT INTO users (nik, nip, nama, gaji_pokok, daily_rate, overtime_rate, tunjangan_tipe, face_encoding, pending_hr_verification, role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'karyawan')""",
+                (nip_new, nip_new, nama, gp, daily_amt, ot_rate, tp,
                  json.dumps(face.tolist()))
             )
+            new_id = cur.lastrowid
+            _log_change(
+                conn, 'users', new_id, 'create', actor_id, actor_name,
+                f'Pendaftaran karyawan baru: NIP {nip_new}, nama {nama}'
+            )
             conn.commit()
-            return jsonify({"status": "success", "message": "Karyawan berhasil didaftarkan!"})
+            return jsonify({"status": "success", "message": "Karyawan berhasil didaftarkan!", "nip": nip_new})
         finally:
             conn.close()
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/v1/employee/self-register', methods=['POST'])
+def self_register_employee():
+    """Pendaftaran mandiri (nama + wajah); menunggu verifikasi HR."""
+    data = request.json
+    try:
+        face = _decode_face(data.get('image', ''))
+        if face is None:
+            return jsonify({"status": "error", "message": "Wajah tidak terdeteksi pada gambar"}), 200
+
+        nama = (data.get('nama') or '').strip()
+        if not nama:
+            return jsonify({"status": "error", "message": "Nama wajib diisi"}), 200
+
+        conn = get_db()
+        try:
+            dup = _find_user_by_face(conn, face)
+            if dup:
+                nip_d = dup['nip'] or dup['nik']
+                return jsonify({
+                    "status": "error",
+                    "message": (
+                        f"Wajah ini sudah terdaftar ({nip_d} — {dup['nama']}). "
+                        "Anda tidak dapat mendaftar ulang dengan wajah yang sama."
+                    ),
+                }), 200
+
+            nip_new = _next_nip(conn)
+            tp = 'staff'
+            gp = 0.0
+            daily_amt = _tunjangan_per_hari(tp)
+            ot_rate = _tarif_lembur_per_jam(gp)
+            cur = conn.execute(
+                """INSERT INTO users (nik, nip, nama, gaji_pokok, daily_rate, overtime_rate, tunjangan_tipe, face_encoding, pending_hr_verification, role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'karyawan')""",
+                (nip_new, nip_new, nama, gp, daily_amt, ot_rate, tp,
+                 json.dumps(face.tolist()))
+            )
+            new_id = cur.lastrowid
+            _log_change(
+                conn, 'users', new_id, 'self_register', None, None,
+                f'Pendaftaran mandiri: NIP {nip_new}, nama {nama} — menunggu verifikasi HR'
+            )
+            conn.commit()
+            return jsonify({
+                "status": "success",
+                "message": "Pendaftaran berhasil. Data masuk ke daftar karyawan; tunggu verifikasi HR untuk login & absensi.",
+                "nip": nip_new
+            })
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/v1/employee/hr-verify/<int:user_id>', methods=['POST'])
+def hr_verify_employee(user_id):
+    """HR menyetujui identitas pegawai yang mendaftar mandiri."""
+    data = request.json or {}
+    actor_id = data.get('actor_user_id')
+    actor_name = (data.get('actor_name') or '').strip() or None
+    conn = get_db()
+    try:
+        if not actor_id:
+            return jsonify({"status": "error", "message": "Akses ditolak."}), 403
+
+        actor = conn.execute(
+            "SELECT id, role, nama FROM users WHERE id = ?", (actor_id,)
+        ).fetchone()
+        if not actor or actor['role'] != 'admin':
+            return jsonify({"status": "error", "message": "Hanya Admin HR yang dapat memverifikasi."}), 403
+
+        row = conn.execute(
+            """SELECT nama, nip, nik, pending_hr_verification FROM users
+               WHERE id = ? AND role = 'karyawan'""",
+            (user_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "Karyawan tidak ditemukan."}), 404
+
+        pend = row['pending_hr_verification'] if 'pending_hr_verification' in row.keys() else 0
+        if not pend:
+            return jsonify({"status": "success", "message": "Karyawan ini sudah terverifikasi sebelumnya."})
+
+        conn.execute(
+            "UPDATE users SET pending_hr_verification = 0 WHERE id = ?",
+            (user_id,)
+        )
+        nip_v = row['nip'] or row['nik']
+        _log_change(
+            conn, 'users', user_id, 'hr_verify', actor_id, actor_name,
+            f"HR memverifikasi identitas: NIP {nip_v}, nama {row['nama']}"
+        )
+        conn.commit()
+        return jsonify({"status": "success", "message": "Identitas karyawan telah diverifikasi."})
+    finally:
+        conn.close()
 
 
 @app.route('/api/v1/employees', methods=['GET'])
@@ -317,9 +627,18 @@ def list_employees():
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT id, nik, nama, gaji_pokok, daily_rate, overtime_rate, created_at FROM users WHERE role = 'karyawan' ORDER BY id DESC"
+            """SELECT id, COALESCE(NULLIF(TRIM(nip), ''), nik) AS nip, nama,
+                      gaji_pokok, tunjangan_tipe, daily_rate, overtime_rate,
+                      pending_hr_verification, created_at
+               FROM users WHERE role = 'karyawan' ORDER BY id DESC"""
         ).fetchall()
-        return jsonify({"total": len(rows), "employees": [dict(r) for r in rows]})
+        out = []
+        for r in rows:
+            d = dict(r)
+            d['tunjangan_per_hari'] = _tunjangan_per_hari(d.get('tunjangan_tipe'))
+            d['tarif_lembur_per_jam'] = _tarif_lembur_per_jam(d.get('gaji_pokok'))
+            out.append(d)
+        return jsonify({"total": len(out), "employees": out})
     finally:
         conn.close()
 
@@ -329,15 +648,21 @@ def get_employee_data(user_id):
     conn = get_db()
     try:
         user = conn.execute(
-            "SELECT id, nama, nik, gaji_pokok, daily_rate, overtime_rate FROM users WHERE id = ?",
+            """SELECT id, nama, COALESCE(NULLIF(TRIM(nip), ''), nik) AS nip,
+                      gaji_pokok, tunjangan_tipe, daily_rate, overtime_rate FROM users WHERE id = ?""",
             (user_id,)
         ).fetchone()
         logs = conn.execute(
             "SELECT tanggal, jam_masuk, jam_keluar, overtime_hours, latitude, longitude, foto_masuk, foto_keluar, status FROM attendance_logs WHERE user_id = ? ORDER BY tanggal DESC",
             (user_id,)
         ).fetchall()
+        uj = None
+        if user:
+            uj = dict(user)
+            uj['tunjangan_per_hari'] = _tunjangan_per_hari(uj.get('tunjangan_tipe'))
+            uj['tarif_lembur_per_jam'] = _tarif_lembur_per_jam(uj.get('gaji_pokok'))
         return jsonify({
-            "user": dict(user) if user else None,
+            "user": uj,
             "logs": [dict(r) for r in logs]
         })
     finally:
@@ -350,15 +675,42 @@ def update_employee(user_id):
     try:
         conn = get_db()
         try:
+            old = conn.execute(
+                "SELECT nama, gaji_pokok, tunjangan_tipe, nip, nik FROM users WHERE id=? AND role='karyawan'",
+                (user_id,)
+            ).fetchone()
+            if not old:
+                return jsonify({"status": "error", "message": "Karyawan tidak ditemukan."}), 404
+
+            nama = (data.get('nama') or '').strip()
+            if not nama:
+                return jsonify({"status": "error", "message": "Nama wajib diisi."}), 400
+
+            gaji = float(data.get('gaji_pokok', 0))
+            tp = _normalize_tunjangan_tipe(data.get('tunjangan_tipe'))
+            daily_amt = _tunjangan_per_hari(tp)
+            ot = _tarif_lembur_per_jam(gaji)
+
             conn.execute(
-                """UPDATE users SET nik=?, nama=?, gaji_pokok=?, daily_rate=?, overtime_rate=?
+                """UPDATE users SET nama=?, gaji_pokok=?, tunjangan_tipe=?, daily_rate=?, overtime_rate=?
                    WHERE id=? AND role='karyawan'""",
-                (data['nik'], data['nama'],
-                 float(data.get('gaji_pokok', 0)),
-                 float(data.get('daily_rate', 0)),
-                 float(data.get('overtime_rate', 0)),
-                 user_id)
+                (nama, gaji, tp, daily_amt, ot, user_id)
             )
+
+            actor_id = data.get('actor_user_id')
+            actor_name = (data.get('actor_name') or '').strip() or None
+            parts = []
+            if old['nama'] != nama:
+                parts.append(f"nama: {old['nama']} → {nama}")
+            if (old['gaji_pokok'] or 0) != gaji:
+                parts.append(f"gaji_pokok: {old['gaji_pokok']} → {gaji}")
+            old_tp = old['tunjangan_tipe'] if 'tunjangan_tipe' in old.keys() else None
+            otp = _normalize_tunjangan_tipe(old_tp)
+            if otp != tp:
+                parts.append(f"tunjangan_tipe: {otp} → {tp}")
+            detail = '; '.join(parts) if parts else 'Perubahan data (tanpa diff)'
+            _log_change(conn, 'users', user_id, 'update', actor_id, actor_name, detail)
+
             conn.commit()
             return jsonify({"status": "success", "message": "Data karyawan berhasil diperbarui."})
         finally:
@@ -370,8 +722,21 @@ def update_employee(user_id):
 @app.route('/api/v1/employee/delete/<int:user_id>', methods=['DELETE'])
 def delete_employee(user_id):
     try:
+        data = request.json or {}
+        actor_id = data.get('actor_user_id')
+        actor_name = (data.get('actor_name') or '').strip() or None
         conn = get_db()
         try:
+            row = conn.execute(
+                "SELECT nama, COALESCE(nip, nik) AS nip FROM users WHERE id = ? AND role = 'karyawan'",
+                (user_id,)
+            ).fetchone()
+            if not row:
+                return jsonify({"status": "error", "message": "Karyawan tidak ditemukan."}), 404
+            _log_change(
+                conn, 'users', user_id, 'delete', actor_id, actor_name,
+                f"Hapus karyawan: NIP {row['nip']}, nama {row['nama']}"
+            )
             conn.execute("DELETE FROM users WHERE id = ? AND role = 'karyawan'", (user_id,))
             conn.commit()
             return jsonify({"status": "success", "message": "Karyawan berhasil dihapus."})
@@ -391,7 +756,7 @@ def all_attendance():
         rows = conn.execute("""
             SELECT a.tanggal, a.jam_masuk, a.jam_keluar, a.overtime_hours,
                    a.latitude, a.longitude, a.foto_masuk, a.foto_keluar,
-                   a.status, u.nama, u.nik
+                   a.status, u.nama, COALESCE(u.nip, u.nik) AS nip
             FROM attendance_logs a JOIN users u ON a.user_id = u.id
             WHERE strftime('%Y-%m', a.tanggal) = ?
             ORDER BY a.tanggal DESC, a.jam_masuk DESC
@@ -424,12 +789,20 @@ def request_leave():
     data = request.json
     try:
         attachment_url = _save_attachment(data.get('attachment'))
+        uid = data.get('user_id')
+        actor_name = (data.get('actor_name') or '').strip()
         conn = get_db()
         try:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO leaves (user_id, jenis_cuti, tanggal, alasan, attachment) VALUES (?, ?, ?, ?, ?)",
-                (data.get('user_id'), data.get('jenis'), data.get('tanggal'),
+                (uid, data.get('jenis'), data.get('tanggal'),
                  data.get('alasan'), attachment_url)
+            )
+            lid = cur.lastrowid
+            _log_change(
+                conn, 'leaves', lid, 'create', uid,
+                actor_name or None,
+                f"Pengajuan cuti: {data.get('jenis')} tanggal {data.get('tanggal')}"
             )
             conn.commit()
             return jsonify({"status": "success", "message": "Pengajuan cuti berhasil!"})
@@ -443,9 +816,17 @@ def request_leave():
 def cancel_leave():
     data = request.json
     try:
+        lid = data.get('leave_id')
+        actor_id = data.get('actor_user_id')
+        actor_name = (data.get('actor_name') or '').strip() or None
         conn = get_db()
         try:
-            conn.execute("UPDATE leaves SET status='Cancelled' WHERE id=? AND status='Pending'", (data.get('leave_id'),))
+            row = conn.execute("SELECT status FROM leaves WHERE id=?", (lid,)).fetchone()
+            if not row:
+                return jsonify({"status": "error", "message": "Data tidak ditemukan."}), 404
+            cur = conn.execute("UPDATE leaves SET status='Cancelled' WHERE id=? AND status='Pending'", (lid,))
+            if cur.rowcount:
+                _log_change(conn, 'leaves', lid, 'cancel', actor_id, actor_name, "Pembatalan pengajuan oleh karyawan")
             conn.commit()
             return jsonify({"status": "success", "message": "Pengajuan dibatalkan."})
         finally:
@@ -471,14 +852,25 @@ def list_leaves():
 def approve_leave():
     data = request.json
     try:
+        lid = data.get('leave_id')
+        action = data.get('action', 'Approved')
+        actor_id = data.get('actor_user_id')
+        actor_name = (data.get('actor_name') or '').strip() or None
         conn = get_db()
         try:
-            conn.execute(
+            old = conn.execute("SELECT status, jenis_cuti, tanggal FROM leaves WHERE id=?", (lid,)).fetchone()
+            cur = conn.execute(
                 "UPDATE leaves SET status=? WHERE id=? AND status='Pending'",
-                (data.get('action', 'Approved'), data.get('leave_id'))
+                (action, lid)
             )
+            if cur.rowcount and old:
+                _log_change(
+                    conn, 'leaves', lid, 'approve' if action == 'Approved' else 'reject',
+                    actor_id, actor_name,
+                    f"Status: {old['status']} → {action}; {old['jenis_cuti']} {old['tanggal']}"
+                )
             conn.commit()
-            return jsonify({"status": "success", "message": f"Cuti {data.get('action', 'Approved')}."})
+            return jsonify({"status": "success", "message": f"Cuti {action}."})
         finally:
             conn.close()
     except Exception as e:
@@ -500,13 +892,33 @@ def my_leaves(user_id):
 
 # ─── PAYROLL ──────────────────────────────────────────────
 
+@app.route('/api/v1/history', methods=['GET'])
+def get_change_history():
+    entity = (request.args.get('entity') or '').strip()
+    record_id = request.args.get('record_id', type=int)
+    if entity not in ('users', 'leaves') or not record_id:
+        return jsonify({"status": "error", "message": "Parameter entity dan record_id wajib."}), 400
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT id, action, changed_by_name, detail, created_at
+               FROM change_history WHERE entity = ? AND record_id = ?
+               ORDER BY id DESC""",
+            (entity, record_id)
+        ).fetchall()
+        return jsonify({"history": [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
 @app.route('/api/v1/payroll/<int:user_id>', methods=['GET'])
 def get_payroll(user_id):
     month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     conn = get_db()
     try:
         user = conn.execute(
-            "SELECT id, nama, nik, gaji_pokok, daily_rate, overtime_rate FROM users WHERE id=?",
+            """SELECT id, nama, COALESCE(NULLIF(TRIM(nip), ''), nik) AS nip,
+                      gaji_pokok, tunjangan_tipe, daily_rate, overtime_rate FROM users WHERE id=?""",
             (user_id,)
         ).fetchone()
         if not user:
@@ -521,18 +933,42 @@ def get_payroll(user_id):
         total_ot = sum(r['overtime_hours'] or 0 for r in logs)
 
         gp = user['gaji_pokok'] or 0
-        daily = total_days * (user['daily_rate'] or 0)
-        ot_pay = total_ot * (user['overtime_rate'] or 0)
+        tp = _normalize_tunjangan_tipe(user['tunjangan_tipe'])
+        tnj_per_hari = _tunjangan_per_hari(tp)
+        ot_rate = _tarif_lembur_per_jam(gp)
+        tunjangan_total = total_days * tnj_per_hari
+        ot_pay = total_ot * ot_rate
+
+        bruto_bulan = gp + tunjangan_total + ot_pay
+        pkp_tahunan_estimasi = bruto_bulan * 12
+        pph21_tahunan = _pph21_annual(pkp_tahunan_estimasi)
+        pph21_bulanan = pph21_tahunan / 12.0
+        gaji_bersih = bruto_bulan - pph21_bulanan
+
+        ud = dict(user)
+        ud['tunjangan_tipe'] = tp
+        ud['tunjangan_per_hari'] = tnj_per_hari
+        ud['tarif_lembur_per_jam'] = ot_rate
+        ud['overtime_rate'] = ot_rate
 
         return jsonify({
-            "user": dict(user),
+            "user": ud,
             "month": month,
             "total_days": total_days,
             "total_overtime_hours": total_ot,
             "gaji_pokok": gp,
-            "daily_total": daily,
+            "tunjangan_per_hari": tnj_per_hari,
+            "tunjangan_total": tunjangan_total,
+            "daily_total": tunjangan_total,
+            "overtime_rate_efektif": ot_rate,
             "overtime_total": ot_pay,
-            "grand_total": gp + daily + ot_pay,
+            "bruto_bulan": bruto_bulan,
+            "pkp_tahunan_estimasi": pkp_tahunan_estimasi,
+            "pph21_tahunan": pph21_tahunan,
+            "pph21_bulanan": pph21_bulanan,
+            "grand_total": bruto_bulan,
+            "gaji_bersih_setelah_pajak": gaji_bersih,
+            "lembur_formula": f"(gaji pokok ÷ {JAM_KERJA_BULAN_PEMBAGI}) × 1,5",
             "logs": [dict(r) for r in logs]
         })
     finally:

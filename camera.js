@@ -62,7 +62,7 @@ function initCamera(videoId, hintId) {
             if (err && err.message === 'NO_GET_USER_MEDIA') { explainCameraBlocked(hintId); return; }
             let msg = 'Tidak bisa mengakses kamera. ';
             if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
-                msg += 'Izinkan akses kamera di browser.';
+                msg += 'Izin kamera harus diaktifkan. Buka ikon gembok / pengaturan situs di bilah alamat browser, izinkan Kamera untuk situs ini, lalu muat ulang halaman.';
             else if (err.name === 'NotFoundError') msg += 'Tidak ada kamera terdeteksi.';
             else if (err.name === 'NotReadableError') msg += 'Kamera dipakai aplikasi lain.';
             else msg += err.message || String(err);
@@ -80,6 +80,11 @@ function stopCamera(videoId) {
 }
 
 function isCameraReady(videoId) { return _cameras[videoId] === true; }
+
+/** Pesan standar jika kamera tidak siap (mis. izin ditolak). */
+function alertCameraRequired() {
+    alert('Izin kamera harus diaktifkan untuk absensi. Buka pengaturan situs di browser, izinkan akses kamera, lalu muat ulang halaman.');
+}
 
 function captureFrameFromVideo(video) {
     if (!video || (!video.srcObject && !video.src)) return null;

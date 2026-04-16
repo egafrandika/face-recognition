@@ -129,7 +129,7 @@
                 await fetch('/api/v1/leave/cancel', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ leave_id: id })
+                    body: JSON.stringify({ leave_id: id, actor_user_id: getUserId(), actor_name: '' })
                 });
                 alert("Pengajuan dibatalkan.");
                 loadCutiSaya();
@@ -190,7 +190,7 @@
                 const data = await res.json();
                 if (data.user) {
                     document.getElementById('cuti-user-info').innerHTML =
-                        `<b>Nama</b>: ${data.user.nama} &nbsp;|&nbsp; <b>NIK</b>: ${data.user.nik}`;
+                        `<b>Nama</b>: ${data.user.nama} &nbsp;|&nbsp; <b>NIP</b>: ${data.user.nip || data.user.nik || '-'}`;
                 }
             } catch (e) {}
         }

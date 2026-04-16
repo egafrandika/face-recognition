@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrasi Pegawai - PayrollFace</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-left">
+            <div>
+                <p style="font-size:1rem;opacity:0.6;margin-bottom:12px;"><i class="fas fa-fingerprint"></i> PayrollFace</p>
+                <h1>Registrasi Pegawai</h1>
+                <p>Daftarkan wajah dan nama Anda. Data akan masuk ke <b>Daftar Karyawan</b> di HR; lengkapi gaji dan data lain melalui HRD.</p>
+                <div style="margin-top:28px;padding:16px;background:rgba(255,255,255,0.08);border-radius:12px;font-size:0.88rem;opacity:0.9;">
+                    <p><i class="fas fa-info-circle"></i> Setelah mendaftar, <b>HR harus memverifikasi identitas</b> Anda sebelum bisa login dan absensi.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="login-right">
+            <div class="login-box">
+                <h2>Data Diri</h2>
+                <p class="subtitle">Isi nama lengkap dan ambil sampel wajah</p>
+
+                <div class="form-group">
+                    <label>Nama lengkap</label>
+                    <input type="text" id="reg-nama" placeholder="Sesuai identitas" autocomplete="name">
+                </div>
+
+                <div class="camera-container" style="margin:16px auto 0;">
+                    <video id="reg-video" autoplay muted playsinline></video>
+                    <div class="face-frame"></div>
+                </div>
+                <p class="camera-hint" id="reg-hint">Menghubungkan kamera...</p>
+
+                <button type="button" class="btn btn-primary btn-lg btn-block" style="margin-top:20px;" id="btn-reg-submit">
+                    <i class="fas fa-user-plus"></i> Kirim Pendaftaran
+                </button>
+                <p id="reg-status" style="margin-top:14px;font-weight:600;min-height:24px;text-align:center;"></p>
+
+                <div style="margin-top:24px;display:flex;flex-direction:column;gap:10px;font-size:0.88rem;">
+                    <a href="login.html" style="color:var(--secondary);text-decoration:none;">
+                        <i class="fas fa-sign-in-alt"></i> Sudah punya akun terverifikasi? Login
+                    </a>
+                    <a href="index.html" style="color:var(--text-light);text-decoration:none;">
+                        <i class="fas fa-arrow-left"></i> Kembali ke beranda
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="camera.js"></script>
+    <script>
+        initCamera('reg-video', 'reg-hint');
+
+        document.getElementById('btn-reg-submit').onclick = async function() {
+            const btn = this;
+            const nama = document.getElementById('reg-nama').value.trim();
+            const status = document.getElementById('reg-status');
+
+            if (!nama) {
+                status.textContent = 'Nama wajib diisi.';
+                status.style.color = '#ef4444';
+                return;
+            }
+            if (!isCameraReady('reg-video')) {
+                alertCameraRequired();
+                status.textContent = 'Izin kamera harus diaktifkan untuk mendaftarkan wajah.';
+                status.style.color = '#ef4444';
+                return;
+            }
+
+            const img = await getImageDataUrlAsync('reg-video');
+            if (!img) {
+                status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.';
+                status.style.color = '#ef4444';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Mengirim...';
+            status.innerHTML = '<span style="color:#3b82f6;">Memproses...</span>';
+
+            try {
+                const res = await fetch('/api/v1/employee/self-register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nama, image: img })
+                });
+                const r = await res.json();
+                status.textContent = r.message || '';
+                status.style.color = r.status === 'success' ? '#10b981' : '#ef4444';
+                if (r.status === 'success' && r.nip) {
+                    status.textContent += ' NIP Anda: ' + r.nip;
+                    document.getElementById('reg-nama').value = '';
+                }
+            } catch (e) {
+                status.textContent = 'Gagal menghubungi server.';
+                status.style.color = '#ef4444';
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-user-plus"></i> Kirim Pendaftaran';
+        };
+    </script>
+</body>
+</html>

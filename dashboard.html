@@ -173,8 +173,9 @@
             status.innerHTML = '<span class="spinner"></span> Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
             btn.disabled = true;
 
+            if (!isCameraReady('emp-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan untuk absensi.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
             const [img, loc] = await Promise.all([getImageDataUrlAsync('emp-video'), getLocation()]);
-            if (!img) { status.textContent = 'Kamera belum siap.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
+            if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
 
             try {
                 const res = await fetch('/api/v1/verify-liveness', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -203,7 +204,7 @@
             tbody.innerHTML = loadingRow(9);
             try {
                 const res = await fetch('/api/v1/employee/data/' + user.id); const data = await res.json();
-                if (data.user) info.innerHTML = '<b>Nama:</b> ' + data.user.nama + ' | <b>NIK:</b> ' + data.user.nik;
+                if (data.user) info.innerHTML = '<b>Nama:</b> ' + data.user.nama + ' | <b>NIP:</b> ' + (data.user.nip || data.user.nik || '-');
                 if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada data.</td></tr>'; return; }
                 tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + 'j</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td><td>' + keterangan(l.jam_masuk, l.jam_keluar) + '</td></tr>').join('');
             } catch (e) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
@@ -221,7 +222,7 @@
             if (jenis === 'Cuti Sakit') { const f = document.getElementById('surat_dokter'); if (f.files.length === 0) { alert('Wajib upload surat dokter!'); return; } attachment = await toBase64(f.files[0]); }
             btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Mengirim...';
             try {
-                const res = await fetch('/api/v1/leave/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: user.id, jenis, tanggal: tgl, alasan: als, attachment }) });
+                const res = await fetch('/api/v1/leave/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: user.id, jenis, tanggal: tgl, alasan: als, attachment, actor_name: user.nama }) });
                 const r = await res.json(); alert(r.message); if (r.status === 'success') loadMyLeaves();
             } catch (e) { alert('Server offline!'); }
             btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Kirim Pengajuan';
@@ -239,7 +240,7 @@
 
         async function cancelCuti(id) {
             if (!confirm('Yakin?')) return;
-            try { await fetch('/api/v1/leave/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leave_id: id }) }); loadMyLeaves(); } catch (e) { alert('Gagal.'); }
+            try { await fetch('/api/v1/leave/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leave_id: id, actor_user_id: user.id, actor_name: user.nama }) }); loadMyLeaves(); } catch (e) { alert('Gagal.'); }
         }
 
         // ─── SLIP GAJI ───
@@ -252,7 +253,12 @@
             try {
                 const res = await fetch('/api/v1/payroll/' + user.id + '?month=' + month); const d = await res.json();
                 if (!d.user) { el.innerHTML = '<p>Data tidak ditemukan.</p>'; actions.style.display = 'none'; return; }
-                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIK:</b> ' + d.user.nik + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Kehadiran (' + d.total_days + 'hr &times; ' + rp(d.user.daily_rate) + ')</td><td style="text-align:right;">' + rp(d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(d.user.overtime_rate) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>TOTAL DITERIMA</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.grand_total) + '</td></tr></tbody></table></div></div>';
+                const nipShow = d.user.nip || d.user.nik || '-';
+                const tnj = d.tunjangan_per_hari != null ? d.tunjangan_per_hari : d.user.tunjangan_per_hari;
+                const otj = d.user.tarif_lembur_per_jam != null ? d.user.tarif_lembur_per_jam : d.user.overtime_rate;
+                const tipeLbl = (d.user.tunjangan_tipe === 'supervisor') ? 'Supervisor' : 'Staff';
+                const lemburNote = d.lembur_formula || '(gaji pokok ÷ 173) × 1,5';
+                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIP:</b> ' + nipShow + '</p><p><b>Tunjangan:</b> ' + tipeLbl + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><p style="font-size:0.78rem;color:var(--text-light);margin-bottom:8px;">Lembur: <code>' + lemburNote + '</code>. PPh21: estimasi dari PKP tahunan = 12 &times; bruto bulan.</p><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Tunjangan (' + d.total_days + 'hr &times; ' + rp(tnj) + ')</td><td style="text-align:right;">' + rp(d.tunjangan_total || d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(otj) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr><td><b>Penghasilan bruto (bulan)</b></td><td style="text-align:right;">' + rp(d.bruto_bulan) + '</td></tr><tr><td>PPh21 (perkiraan bulanan)</td><td style="text-align:right;">&minus; ' + rp(d.pph21_bulanan) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>Gaji bersih diterima</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.gaji_bersih_setelah_pajak) + '</td></tr></tbody></table></div></div>';
                 actions.style.display = 'flex';
             } catch (e) { el.innerHTML = '<p style="color:var(--danger);">Gagal memuat data.</p>'; actions.style.display = 'none'; }
         }
