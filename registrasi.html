@@ -54,6 +54,7 @@
     </div>
 
     <script src="camera.js"></script>
+    <script src="blink-liveness.js"></script>
     <script>
         initCamera('reg-video', 'reg-hint');
 
@@ -74,10 +75,27 @@
                 return;
             }
 
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Verifikasi kedip...';
+            status.innerHTML = '<span style="color:#3b82f6;">Kedipkan mata sekali…</span>';
+            try {
+                await waitForBlinkOnce('reg-video', 'reg-hint');
+            } catch (e) {
+                status.textContent = (e && e.message === 'timeout') ? 'Waktu verifikasi kedip habis. Coba lagi.' : ((e && e.message) || 'Verifikasi kedip gagal.');
+                status.style.color = '#ef4444';
+                if (typeof setHint === 'function') setHint('reg-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-user-plus"></i> Kirim Pendaftaran';
+                return;
+            }
+            if (typeof setHint === 'function') setHint('reg-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+
             const img = await getImageDataUrlAsync('reg-video');
             if (!img) {
                 status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.';
                 status.style.color = '#ef4444';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-user-plus"></i> Kirim Pendaftaran';
                 return;
             }
 

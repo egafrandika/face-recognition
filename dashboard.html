@@ -104,6 +104,7 @@
     </div>
 
     <script src="camera.js"></script>
+    <script src="blink-liveness.js"></script>
     <script>
         const user = JSON.parse(localStorage.getItem('payrollface_user') || 'null');
         if (!user || user.role !== 'karyawan') { window.location.href = 'login.html'; }
@@ -174,6 +175,16 @@
             btn.disabled = true;
 
             if (!isCameraReady('emp-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan untuk absensi.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
+            try {
+                await waitForBlinkOnce('emp-video', 'emp-cam-hint');
+            } catch (e) {
+                status.textContent = (e && e.message === 'timeout') ? 'Waktu verifikasi kedip habis. Coba lagi.' : ((e && e.message) || 'Verifikasi kedip gagal.');
+                status.style.color = '#ef4444';
+                if (typeof setHint === 'function') setHint('emp-cam-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+                btn.disabled = false;
+                return;
+            }
+            if (typeof setHint === 'function') setHint('emp-cam-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
             const [img, loc] = await Promise.all([getImageDataUrlAsync('emp-video'), getLocation()]);
             if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
 

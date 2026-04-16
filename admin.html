@@ -177,6 +177,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="camera.js"></script>
+    <script src="blink-liveness.js"></script>
     <script>
         const user = JSON.parse(localStorage.getItem('payrollface_user') || 'null');
         if (!user || user.role !== 'admin') { window.location.href = 'login.html'; }
@@ -333,9 +334,19 @@
             const nama = document.getElementById('input-nama').value.trim();
             if (!nama) { alert('Nama wajib diisi!'); return; }
             if (!isCameraReady('admin-video')) { alertCameraRequired(); return; }
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Verifikasi kedip...';
+            try {
+                await waitForBlinkOnce('admin-video', 'enroll-hint');
+            } catch (e) {
+                alert((e && e.message === 'timeout') ? 'Waktu verifikasi kedip habis. Coba lagi.' : ((e && e.message) || 'Verifikasi kedip gagal.'));
+                if (typeof setHint === 'function') setHint('enroll-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+                btn.disabled = false; btn.innerHTML = '<i class="fas fa-camera"></i> Ambil Sampel & Daftarkan';
+                return;
+            }
+            if (typeof setHint === 'function') setHint('enroll-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
             const img = await getImageDataUrlAsync('admin-video');
-            if (!img) { alert('Kamera belum siap. Pastikan izin kamera aktif.'); return; }
-            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Mendaftarkan...';
+            if (!img) { alert('Kamera belum siap. Pastikan izin kamera aktif.'); btn.disabled = false; btn.innerHTML = '<i class="fas fa-camera"></i> Ambil Sampel & Daftarkan'; return; }
+            btn.innerHTML = '<span class="spinner"></span> Mendaftarkan...';
             try {
                 const res = await fetch('/api/v1/face/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -493,6 +504,16 @@
             btns.forEach(b => b.disabled = true);
             status.innerHTML = '<span class="spinner"></span> Mengambil lokasi & verifikasi...'; status.style.color = '#3b82f6';
             if (!isCameraReady('admin-att-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan.'; status.style.color = '#ef4444'; btns.forEach(b => b.disabled = false); return; }
+            try {
+                await waitForBlinkOnce('admin-att-video', 'att-hint');
+            } catch (e) {
+                status.textContent = (e && e.message === 'timeout') ? 'Waktu verifikasi kedip habis. Coba lagi.' : ((e && e.message) || 'Verifikasi kedip gagal.');
+                status.style.color = '#ef4444';
+                if (typeof setHint === 'function') setHint('att-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+                btns.forEach(b => b.disabled = false);
+                return;
+            }
+            if (typeof setHint === 'function') setHint('att-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
             const [img, loc] = await Promise.all([getImageDataUrlAsync('admin-att-video'), getLocation()]);
             if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; btns.forEach(b => b.disabled = false); return; }
             try {
@@ -505,8 +526,18 @@
 
         async function registerAdminFace() {
             const status = document.getElementById('admin-att-status');
-            status.textContent = 'Mengambil sampel wajah...'; status.style.color = '#3b82f6';
+            status.textContent = 'Verifikasi kedip...'; status.style.color = '#3b82f6';
             if (!isCameraReady('admin-att-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan.'; status.style.color = '#ef4444'; return; }
+            try {
+                await waitForBlinkOnce('admin-att-video', 'att-hint');
+            } catch (e) {
+                status.textContent = (e && e.message === 'timeout') ? 'Waktu verifikasi kedip habis. Coba lagi.' : ((e && e.message) || 'Verifikasi kedip gagal.');
+                status.style.color = '#ef4444';
+                if (typeof setHint === 'function') setHint('att-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+                return;
+            }
+            if (typeof setHint === 'function') setHint('att-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
+            status.textContent = 'Mengambil sampel wajah...'; status.style.color = '#3b82f6';
             const img = await getImageDataUrlAsync('admin-att-video');
             if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; return; }
             try {
