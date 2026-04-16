@@ -159,11 +159,19 @@
         </div>
     </div>
 
-    <div class="modal-overlay" id="history-modal">
-        <div class="modal-content" style="max-width:520px;max-height:85vh;overflow:auto;">
-            <h3 id="history-modal-title"><i class="fas fa-history"></i> Riwayat Perubahan</h3>
-            <div id="history-modal-body" style="font-size:0.88rem;color:var(--text);"></div>
-            <button type="button" class="btn btn-outline btn-block" style="margin-top:16px;" onclick="closeHistoryModal()">Tutup</button>
+    <div class="modal-overlay" id="history-modal" onclick="if(event.target===this)closeHistoryModal()">
+        <div class="modal-content history-modal-panel" onclick="event.stopPropagation()">
+            <div class="history-modal-header">
+                <div class="history-modal-title-wrap">
+                    <h3 id="history-modal-title"><i class="fas fa-history"></i> Riwayat Perubahan</h3>
+                    <p class="history-modal-sub">Catatan audit: waktu, pelaku, jenis aksi, dan detail perubahan.</p>
+                </div>
+                <button type="button" class="history-modal-close" onclick="closeHistoryModal()" title="Tutup" aria-label="Tutup"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="history-modal-body" class="history-modal-scroll"></div>
+            <div class="history-modal-footer">
+                <button type="button" class="btn btn-primary" onclick="closeHistoryModal()"><i class="fas fa-check"></i> Tutup</button>
+            </div>
         </div>
     </div>
 
@@ -234,23 +242,44 @@
             } catch (e) { el.placeholder = '(server)'; }
         }
         function closeHistoryModal() { document.getElementById('history-modal').classList.remove('active'); }
+        function escHtml(s) {
+            if (s == null || s === undefined) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        function historyBadgeClass(action) {
+            const a = String(action || '').toLowerCase();
+            const map = {
+                create: 'history-badge--create', update: 'history-badge--update', delete: 'history-badge--delete',
+                hr_verify: 'history-badge--hr_verify', self_register: 'history-badge--self_register',
+                approve: 'history-badge--approve', reject: 'history-badge--reject', cancel: 'history-badge--cancel'
+            };
+            return 'history-badge ' + (map[a] || 'history-badge--default');
+        }
         async function openHistoryModal(entity, recordId, title) {
             document.getElementById('history-modal').classList.add('active');
-            document.getElementById('history-modal-title').innerHTML = '<i class="fas fa-history"></i> ' + (title || 'Riwayat');
+            document.getElementById('history-modal-title').innerHTML = '<i class="fas fa-history"></i> ' + escHtml(title || 'Riwayat perubahan');
             const body = document.getElementById('history-modal-body');
-            body.innerHTML = '<div style="text-align:center;padding:16px;"><span class="spinner"></span> Memuat...</div>';
+            body.innerHTML = '<div class="history-loading"><span class="spinner" style="margin:0;"></span><span>Memuat riwayat…</span></div>';
             try {
                 const res = await fetch('/api/v1/history?entity=' + encodeURIComponent(entity) + '&record_id=' + recordId);
                 const data = await res.json();
                 const rows = data.history || [];
                 if (rows.length === 0) {
-                    body.innerHTML = '<p style="color:var(--text-light);">Belum ada riwayat perubahan tercatat.</p>';
+                    body.innerHTML = '<div class="history-empty"><i class="fas fa-clipboard-list"></i><p>Belum ada entri audit untuk data ini.</p></div>';
                     return;
                 }
-                body.innerHTML = '<table style="width:100%;font-size:0.85rem;border-collapse:collapse;"><thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Tanggal</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Oleh</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Aksi</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border);">Detail</th></tr></thead><tbody>' +
-                    rows.map(h => '<tr><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap;">' + (h.created_at || '-') + '</td><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;">' + (h.changed_by_name || '—') + '</td><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;">' + (h.action || '-') + '</td><td style="padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;">' + (h.detail || '-') + '</td></tr>').join('') + '</tbody></table>';
+                const thead = '<div class="history-table-wrap"><table class="history-table"><thead><tr>'
+                    + '<th>Waktu</th><th>Pelaku</th><th>Aksi</th><th>Detail</th></tr></thead><tbody>';
+                const tbody = rows.map(h => {
+                    const actor = h.changed_by_name ? escHtml(h.changed_by_name) : '';
+                    const actorCell = actor
+                        ? '<span class="col-actor">' + actor + '</span>'
+                        : '<span class="col-actor muted">Sistem / tidak dicatat</span>';
+                    return '<tr><td class="col-time">' + escHtml(h.created_at || '—') + '</td><td>' + actorCell + '</td><td><span class="' + historyBadgeClass(h.action) + '">' + escHtml(h.action || '—') + '</span></td><td class="col-detail">' + escHtml(h.detail || '—') + '</td></tr>';
+                }).join('');
+                body.innerHTML = thead + tbody + '</tbody></table></div>';
             } catch (e) {
-                body.innerHTML = '<p style="color:var(--danger);">Gagal memuat riwayat.</p>';
+                body.innerHTML = '<div class="history-error"><i class="fas fa-exclamation-circle"></i> Gagal memuat riwayat. Periksa koneksi lalu coba lagi.</div>';
             }
         }
 
