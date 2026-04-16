@@ -56,7 +56,9 @@ def test_verify(image_b64, absensi_type="Masuk"):
     print(f"\n--- Verify Attendance ({absensi_type}) ---")
     resp = requests.post(f"{API_BASE}/api/v1/verify-liveness", json={
         "image": image_b64,
-        "type": absensi_type
+        "type": absensi_type,
+        "latitude": -6.2,
+        "longitude": 106.8,
     })
     print(f"Status: {resp.status_code}")
     print(f"Response: {json.dumps(resp.json(), indent=2)}")

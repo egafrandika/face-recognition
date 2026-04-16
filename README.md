@@ -12,14 +12,14 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 - **Anti-duplikat wajah**: Pendaftaran HR maupun registrasi mandiri **ditolak** jika wajah sudah cocok dengan pengguna yang terdaftar (perbandingan encoding, toleransi sama seperti login).
 - **Manajemen Absensi**: Pencatatan jam masuk/pulang dengan perhitungan lembur otomatis (setelah jam kerja normal).
 - **Foto Absensi**: Foto wajah karyawan saat masuk & keluar otomatis tersimpan di Cloudinary dan ditampilkan di rekap kehadiran (satu kali per hari, tidak bisa diulang).
-- **Geolokasi**: Titik lokasi GPS saat absensi, ditampilkan sebagai link Google Maps di tabel HR.
+- **Geolokasi wajib**: **Izin lokasi** harus diaktifkan untuk absensi (karyawan & HR); jika ditolak, absensi tidak diproses. Koordinat ditampilkan sebagai link Google Maps di rekap.
 - **Cloudinary Storage**: Lampiran surat dokter (cuti sakit) dan foto absensi disimpan di cloud via Cloudinary.
 - **Tunjangan Kehadiran**: Menggantikan “gaji harian” — dua tipe: **Staff Rp25.000** dan **Supervisor Rp35.000** per hari hadir (dipilih saat pendaftaran/edit karyawan).
 - **Tarif Lembur Otomatis**: Dihitung dari gaji pokok, **tidak dapat diubah manual**: `(gaji pokok ÷ 173) × 1,5` per jam (173 = jam kerja efektif per bulan).
-- **Sistem Payroll**: Gaji pokok + tunjangan (sesuai tipe × hari hadir) + uang lembur; estimasi **PPh21** progresif (disetahunkan dari bruto bulan) dan tampilan gaji bersih.
+- **Sistem Payroll & PPN**: Gaji pokok + tunjangan (sesuai tipe × hari hadir) + uang lembur; potongan **PPN** sederhana = persen × penghasilan bruto bulan (persen diatur admin, default **12%** di atas tabel **Daftar Karyawan**), lalu tampilan gaji bersih.
 - **Slip Gaji**: Cetak atau download slip gaji bulanan (PDF via print / gambar PNG).
 - **Riwayat Perubahan (Audit)**: Tabel `change_history` — siapa yang mengubah data dan kapan; di panel HR tombol **Riwayat** pada **Daftar Karyawan** dan **Persetujuan Cuti** membuka modal riwayat.
-- **Izin Kamera**: Jika kamera ditolak, pengguna mendapat pesan agar mengaktifkan izin kamera di pengaturan browser.
+- **Izin Kamera & Lokasi**: Kamera wajib untuk semua alur wajah; **lokasi GPS wajib** hanya untuk **absensi** (dashboard karyawan & panel Absensi HR). Helper di `camera.js`: `getLocationRequired()`, `geoErrorToMessage()`.
 - **Pengajuan Cuti**: Formulir digital lengkap dengan upload surat dokter untuk cuti sakit.
 - **Panel Admin HRD**: Enrollment karyawan, rekap kehadiran, persetujuan cuti, slip gaji, dan absensi HR.
 - **Loading Indicator**: Spinner animasi pada semua tabel dan tombol aksi saat fetching data.
@@ -40,8 +40,9 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 ```
 project_skripsi/
 ├── app.py                  # Backend Flask (API server)
-├── camera.js               # Modul kamera (init, capture, izin kamera)
+├── camera.js               # Kamera, capture, geolokasi wajib absensi (`getLocationRequired`)
 ├── blink-liveness.js       # Verifikasi kedip sebelum capture (face-api + EAR)
+├── test_api.py             # Skrip uji API (register / absensi; kirim koordinat dummy)
 ├── style.css               # Stylesheet global + responsive
 ├── index.html              # Halaman landing page
 ├── login.html              # Login (face recognition + manual admin)
@@ -231,28 +232,41 @@ ngrok http 5000
 
 ### Admin HRD
 
-1. **Kelola Karyawan** — Daftarkan karyawan baru dengan foto wajah (setelah **verifikasi kedip**); atur **gaji pokok** dan **tipe tunjangan** (Staff / Supervisor). **NIP** dibuat otomatis; **tarif lembur** dihitung otomatis dari gaji pokok (field readonly). Wajah yang sama dengan pegawai lain **tidak dapat didaftarkan**. Untuk pegawai dari **registrasi mandiri**, gunakan **Verifikasi** agar bisa login/absensi; gunakan **Riwayat** untuk audit. Edit atau hapus data.
+1. **Kelola Karyawan** — Atur **PPN slip gaji (%)** di atas tabel daftar (tombol Simpan). Daftarkan karyawan baru dengan foto wajah (setelah **verifikasi kedip**); atur **gaji pokok** dan **tipe tunjangan** (Staff / Supervisor). **NIP** dibuat otomatis; **tarif lembur** dihitung otomatis dari gaji pokok (field readonly). Wajah yang sama dengan pegawai lain **tidak dapat didaftarkan**. Untuk pegawai dari **registrasi mandiri**, gunakan **Verifikasi** agar bisa login/absensi; gunakan **Riwayat** untuk audit. Edit atau hapus data.
 2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan foto masuk/keluar, jam masuk/keluar, lembur, dan lokasi GPS.
 3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti. Tombol **Riwayat** menampilkan siapa yang menyetujui/menolak dan kapan (jika tercatat).
-4. **Slip Gaji** — Pilih karyawan dan bulan; rincian memuat gaji pokok, tunjangan, lembur, estimasi PPh21, dan gaji bersih.
-5. **Absensi HR** — Absen masuk/pulang dengan face recognition (kedip dulu, lalu verifikasi). **Daftarkan Wajah Saya** juga memakai langkah kedip sebelum sampel dikirim.
+4. **Slip Gaji** — Pilih karyawan dan bulan; rincian memuat gaji pokok, tunjangan, lembur, potongan **PPN** (sesuai persen pengaturan), dan gaji bersih.
+5. **Absensi HR** — Sama seperti karyawan: **kamera + lokasi** wajib; kedip lalu verifikasi wajah. **Daftarkan Wajah Saya** hanya memakai kedip + foto (tanpa syarat lokasi karena bukan absensi).
 
 ### Karyawan
 
-1. **Absensi** — Pilih Masuk/Pulang; ikuti **kalibrasi** lalu **kedip sekali**, kemudian foto dikirim (izin kamera harus aktif). Akun yang **belum diverifikasi HR** tidak dapat absensi.
+1. **Absensi** — Pilih Masuk/Pulang; izin **lokasi** dan **kamera** wajib aktif; ikuti **kalibrasi** lalu **kedip sekali**, kemudian foto dikirim. Akun yang **belum diverifikasi HR** tidak dapat absensi.
 2. **Riwayat Kehadiran** — Tabel harian: foto masuk/keluar, jam, lembur, lokasi, dan keterangan.
 3. **Pengajuan Cuti** — Isi formulir, upload surat dokter jika sakit (tersimpan di Cloudinary).
-4. **Slip Gaji** — Pilih bulan; tampilan mencakup tunjangan, lembur (sesuai rumus), PPh21 perkiraan, dan gaji bersih.
+4. **Slip Gaji** — Pilih bulan; tampilan mencakup tunjangan, lembur (sesuai rumus), potongan **PPN**, dan gaji bersih.
 
 ### Rumus Payroll (ringkas)
 
+**Penghasilan bruto (bulan)** untuk slip = **gaji pokok** + **total tunjangan** (hari hadir dalam bulan × tarif harian) + **total lembur** (jam × tarif lembur/jam).
+
 | Komponen | Perhitungan |
 |----------|-------------|
-| Tunjangan | `hari hadir × Rp25.000` (Staff) atau `× Rp35.000` (Supervisor) |
+| Tunjangan bulan | `hari hadir (di bulan slip) × Rp25.000` (Staff) atau `× Rp35.000` (Supervisor) |
 | Lembur/jam | `(gaji pokok ÷ 173) × 1,5` |
-| PPh21 (estimasi) | Tarif progresif tahunan dari PKP perkiraan = `12 × penghasilan bruto bulan ini` |
+| PPN | `ppn_persen% × penghasilan bruto bulan` — `ppn_persen` di **Kelola Karyawan** (simpan ke `app_settings`; default **12%**) |
+| Gaji bersih | bruto bulan − potongan PPN |
 
-*PPh21 adalah penyederhanaan untuk tampilan slip; kepatuhan penuh mengikuti peraturan perpajakan yang berlaku.*
+*PPN di aplikasi ini adalah penyederhanaan untuk tampilan slip, bukan pengganti ketentuan perpajakan resmi.*
+
+### Mengubah persen PPN (admin)
+
+1. Login sebagai admin → **Kelola Karyawan**.
+2. Isi **PPN slip gaji (%)** (0–100) di atas tabel Daftar Karyawan → **Simpan**.
+3. API alternatif: `PUT /api/v1/settings` dengan JSON, misalnya:
+
+```json
+{ "ppn_persen": 12, "actor_user_id": <id_admin_dari_localStorage> }
+```
 
 ### Verifikasi kedip (liveness)
 
@@ -269,7 +283,9 @@ ngrok http 5000
 |--------|----------|-----------|
 | POST | `/api/v1/login/face` | Login dengan face recognition |
 | POST | `/api/v1/login/manual` | Login manual (**NIP** atau alias lama + password) |
-| POST | `/api/v1/verify-liveness` | Absensi masuk/pulang + geolokasi |
+| POST | `/api/v1/verify-liveness` | Absensi masuk/pulang; **wajib** `latitude` & `longitude` (izin lokasi) |
+| GET | `/api/v1/settings` | Baca `ppn_persen` (untuk slip) |
+| PUT | `/api/v1/settings` | Simpan PPN — body JSON: `ppn_persen` (0–100), `actor_user_id` (wajib, user admin) |
 | GET | `/api/v1/nip/preview` | Pratinjau NIP berikutnya (otomatis) |
 | POST | `/api/v1/face/register` | Enrollment karyawan oleh HR (`nama`, `gaji_pokok`, `tunjangan_tipe`, `image`, …); tolak jika wajah duplikat |
 | POST | `/api/v1/employee/self-register` | Registrasi mandiri (`nama`, `image`); `pending_hr_verification=1`; tolak jika wajah duplikat |
@@ -285,7 +301,7 @@ ngrok http 5000
 | GET | `/api/v1/leave/my/<id>` | Riwayat cuti per karyawan |
 | GET | `/api/v1/leave/list` | Daftar semua cuti (HR) |
 | POST | `/api/v1/leave/approve` | Setujui/tolak cuti |
-| GET | `/api/v1/payroll/<id>` | Hitung slip gaji bulanan (tunjangan, lembur, PPh21, …) |
+| GET | `/api/v1/payroll/<id>` | Hitung slip gaji bulanan (tunjangan, lembur, PPN, gaji bersih) |
 | POST | `/api/v1/admin/register-face` | Daftarkan wajah admin |
 
 ## Database Schema
@@ -296,3 +312,4 @@ Tabel utama (SQLite, auto-generated / dimigrasi saat `app.py` dijalankan):
 - **attendance_logs** — `id`, `user_id` (FK), `tanggal`, `jam_masuk`, `jam_keluar`, `overtime_hours`, `latitude`, `longitude`, `foto_masuk`, `foto_keluar`, `status`
 - **leaves** — `id`, `user_id` (FK), `jenis_cuti`, `tanggal`, `alasan`, `attachment` (URL Cloudinary), `status`
 - **change_history** — `id`, `entity` (`users` / `leaves`), `record_id`, `action`, `changed_by_user_id`, `changed_by_name`, `detail`, `created_at`
+- **app_settings** — `key`, `value` (mis. `ppn_persen` = persen PPN dari bruto slip)

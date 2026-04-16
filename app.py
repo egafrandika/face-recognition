@@ -32,24 +32,21 @@ JAM_KERJA_BULAN_PEMBAGI = 173
 TUNJANGAN_STAFF_PER_HARI = 25_000
 TUNJANGAN_SUPERVISOR_PER_HARI = 35_000
 
-# PPh21 tarif progresif (penghasilan kena pajak per tahun, UU umum)
-PKP_TIER1_MAX = 60_000_000   # s/d Rp60 jt: 5%
-PKP_TIER2_MAX = 250_000_000  # di atas Rp60 jt s/d Rp250 jt: 15%
+def _get_setting(conn, key, default=None):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if not row:
+        return default
+    return row["value"]
 
 
-def _pph21_annual(pkp_tahunan):
-    """PPh21 tahunan berdasarkan PKP (penghasilan kena pajak) per tahun."""
-    pkp = max(0.0, float(pkp_tahunan))
-    if pkp <= PKP_TIER1_MAX:
-        return pkp * 0.05
-    if pkp <= PKP_TIER2_MAX:
-        return PKP_TIER1_MAX * 0.05 + (pkp - PKP_TIER1_MAX) * 0.15
-    # Di atas Rp250 jt: lapisan ketiga umum 25% (kelanjutan tarif progresif)
-    return (
-        PKP_TIER1_MAX * 0.05
-        + (PKP_TIER2_MAX - PKP_TIER1_MAX) * 0.15
-        + (pkp - PKP_TIER2_MAX) * 0.25
-    )
+def _get_ppn_persen(conn):
+    """Persen potongan PPN dari penghasilan bruto slip (0–100), default 12."""
+    raw = _get_setting(conn, "ppn_persen", "12")
+    try:
+        p = float(raw)
+        return max(0.0, min(100.0, p))
+    except (TypeError, ValueError):
+        return 12.0
 
 
 def _next_nip(conn):
@@ -178,6 +175,10 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_change_history_lookup ON change_history (entity, record_id);
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
 
         for col, spec in [
@@ -232,6 +233,10 @@ def init_db():
             pass
         conn.execute(
             "UPDATE users SET pending_hr_verification = 0 WHERE pending_hr_verification IS NULL"
+        )
+
+        conn.execute(
+            "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ppn_persen', '12')"
         )
 
         admin = conn.execute("SELECT id, password FROM users WHERE nik = 'ADMIN001' OR nip = 'ADMIN001'").fetchone()
@@ -388,6 +393,12 @@ def verify_absensi():
         face = _decode_face(image_data)
         if face is None:
             return jsonify({"status": "failed", "message": "Wajah tidak terdeteksi"}), 200
+
+        if lat is None or lng is None:
+            return jsonify({
+                "status": "error",
+                "message": "Lokasi wajib untuk absensi. Aktifkan izin lokasi di pengaturan browser lalu coba lagi.",
+            }), 200
 
         conn = get_db()
         try:
@@ -940,10 +951,9 @@ def get_payroll(user_id):
         ot_pay = total_ot * ot_rate
 
         bruto_bulan = gp + tunjangan_total + ot_pay
-        pkp_tahunan_estimasi = bruto_bulan * 12
-        pph21_tahunan = _pph21_annual(pkp_tahunan_estimasi)
-        pph21_bulanan = pph21_tahunan / 12.0
-        gaji_bersih = bruto_bulan - pph21_bulanan
+        ppn_persen = _get_ppn_persen(conn)
+        potongan_ppn = bruto_bulan * (ppn_persen / 100.0)
+        gaji_bersih = bruto_bulan - potongan_ppn
 
         ud = dict(user)
         ud['tunjangan_tipe'] = tp
@@ -963,14 +973,53 @@ def get_payroll(user_id):
             "overtime_rate_efektif": ot_rate,
             "overtime_total": ot_pay,
             "bruto_bulan": bruto_bulan,
-            "pkp_tahunan_estimasi": pkp_tahunan_estimasi,
-            "pph21_tahunan": pph21_tahunan,
-            "pph21_bulanan": pph21_bulanan,
+            "ppn_persen": ppn_persen,
+            "potongan_ppn": potongan_ppn,
             "grand_total": bruto_bulan,
             "gaji_bersih_setelah_pajak": gaji_bersih,
             "lembur_formula": f"(gaji pokok ÷ {JAM_KERJA_BULAN_PEMBAGI}) × 1,5",
+            "ppn_formula": f"{ppn_persen:g}% × penghasilan bruto bulan",
             "logs": [dict(r) for r in logs]
         })
+    finally:
+        conn.close()
+
+
+@app.route('/api/v1/settings', methods=['GET'])
+def get_settings():
+    conn = get_db()
+    try:
+        return jsonify({"ppn_persen": _get_ppn_persen(conn)})
+    finally:
+        conn.close()
+
+
+@app.route('/api/v1/settings', methods=['PUT'])
+def put_settings():
+    data = request.json or {}
+    actor_id = data.get('actor_user_id')
+    conn = get_db()
+    try:
+        if not actor_id:
+            return jsonify({"status": "error", "message": "Akses ditolak."}), 403
+        actor = conn.execute("SELECT role FROM users WHERE id = ?", (actor_id,)).fetchone()
+        if not actor or actor['role'] != 'admin':
+            return jsonify({"status": "error", "message": "Hanya admin yang dapat mengubah pengaturan."}), 403
+        raw = data.get('ppn_persen')
+        if raw is None:
+            return jsonify({"status": "error", "message": "Nilai PPN wajib diisi."}), 400
+        try:
+            p = float(raw)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "Nilai PPN tidak valid."}), 400
+        p = max(0.0, min(100.0, p))
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('ppn_persen', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (str(p),),
+        )
+        conn.commit()
+        return jsonify({"status": "success", "message": "Pengaturan PPN disimpan.", "ppn_persen": p})
     finally:
         conn.close()
 

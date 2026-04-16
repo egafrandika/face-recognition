@@ -136,17 +136,6 @@
 
         const rp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
 
-        function getLocation() {
-            return new Promise(resolve => {
-                if (!navigator.geolocation) { resolve({}); return; }
-                navigator.geolocation.getCurrentPosition(
-                    p => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
-                    () => resolve({}),
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
-            });
-        }
-
         function locCell(lat, lng) {
             if (!lat && !lng) return '<span style="color:var(--grey);font-size:0.78rem;">-</span>';
             return '<a class="loc-link" href="https://www.google.com/maps?q=' + lat + ',' + lng + '" target="_blank"><i class="fas fa-map-marker-alt"></i> Lihat</a>';
@@ -185,12 +174,21 @@
                 return;
             }
             if (typeof setHint === 'function') setHint('emp-cam-hint', 'Kamera aktif — posisikan wajah dalam bingkai.', '#10b981');
-            const [img, loc] = await Promise.all([getImageDataUrlAsync('emp-video'), getLocation()]);
+            const img = await getImageDataUrlAsync('emp-video');
             if (!img) { status.textContent = 'Kamera belum siap. Pastikan izin kamera aktif.'; status.style.color = '#ef4444'; btn.disabled = false; return; }
+            let loc;
+            try {
+                loc = await getLocationRequired();
+            } catch (e) {
+                status.textContent = typeof geoErrorToMessage === 'function' ? geoErrorToMessage(e) : 'Izin lokasi wajib untuk absensi.';
+                status.style.color = '#ef4444';
+                btn.disabled = false;
+                return;
+            }
 
             try {
                 const res = await fetch('/api/v1/verify-liveness', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: img, type, user_id: user.id, latitude: loc.latitude || null, longitude: loc.longitude || null }) });
+                    body: JSON.stringify({ image: img, type, user_id: user.id, latitude: loc.latitude, longitude: loc.longitude }) });
                 const r = await res.json(); status.textContent = r.message; status.style.color = r.status === 'success' ? '#10b981' : '#ef4444';
             } catch (e) { status.textContent = 'Server offline!'; status.style.color = '#ef4444'; }
             btn.disabled = false;
@@ -269,7 +267,9 @@
                 const otj = d.user.tarif_lembur_per_jam != null ? d.user.tarif_lembur_per_jam : d.user.overtime_rate;
                 const tipeLbl = (d.user.tunjangan_tipe === 'supervisor') ? 'Supervisor' : 'Staff';
                 const lemburNote = d.lembur_formula || '(gaji pokok ÷ 173) × 1,5';
-                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIP:</b> ' + nipShow + '</p><p><b>Tunjangan:</b> ' + tipeLbl + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><p style="font-size:0.78rem;color:var(--text-light);margin-bottom:8px;">Lembur: <code>' + lemburNote + '</code>. PPh21: estimasi dari PKP tahunan = 12 &times; bruto bulan.</p><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Tunjangan (' + d.total_days + 'hr &times; ' + rp(tnj) + ')</td><td style="text-align:right;">' + rp(d.tunjangan_total || d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(otj) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr><td><b>Penghasilan bruto (bulan)</b></td><td style="text-align:right;">' + rp(d.bruto_bulan) + '</td></tr><tr><td>PPh21 (perkiraan bulanan)</td><td style="text-align:right;">&minus; ' + rp(d.pph21_bulanan) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>Gaji bersih diterima</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.gaji_bersih_setelah_pajak) + '</td></tr></tbody></table></div></div>';
+                const ppnPct = (d.ppn_persen != null && !isNaN(Number(d.ppn_persen))) ? Number(d.ppn_persen) : 12;
+                const ppnNote = d.ppn_formula || (ppnPct + '% × penghasilan bruto bulan');
+                el.innerHTML = '<div id="slip-render" class="slip-inline"><div class="slip-inline-header"><h3>SLIP GAJI KARYAWAN</h3><p>Periode: ' + d.month + '</p></div><div class="slip-info-grid"><p><b>Nama:</b> ' + d.user.nama + '</p><p><b>NIP:</b> ' + nipShow + '</p><p><b>Tunjangan:</b> ' + tipeLbl + '</p><p><b>Hari Hadir:</b> ' + d.total_days + '</p><p><b>Jam Lembur:</b> ' + d.total_overtime_hours + '</p></div><p style="font-size:0.78rem;color:var(--text-light);margin-bottom:8px;">Lembur: <code>' + lemburNote + '</code>. PPN: <code>' + ppnNote + '</code> (diatur HR).</p><div class="slip-table-wrap"><table><thead><tr><th>Komponen</th><th style="text-align:right;">Jumlah</th></tr></thead><tbody><tr><td>Gaji Pokok</td><td style="text-align:right;">' + rp(d.gaji_pokok) + '</td></tr><tr><td>Tunjangan (' + d.total_days + 'hr &times; ' + rp(tnj) + ')</td><td style="text-align:right;">' + rp(d.tunjangan_total || d.daily_total) + '</td></tr><tr><td>Lembur (' + d.total_overtime_hours + 'j &times; ' + rp(otj) + ')</td><td style="text-align:right;">' + rp(d.overtime_total) + '</td></tr><tr><td><b>Penghasilan bruto (bulan)</b></td><td style="text-align:right;">' + rp(d.bruto_bulan) + '</td></tr><tr><td>PPN (' + ppnPct + '%)</td><td style="text-align:right;">&minus; ' + rp(d.potongan_ppn) + '</td></tr><tr style="font-weight:700;background:var(--light);"><td>Gaji bersih diterima</td><td style="text-align:right;color:var(--accent);font-size:1.05rem;">' + rp(d.gaji_bersih_setelah_pajak) + '</td></tr></tbody></table></div></div>';
                 actions.style.display = 'flex';
             } catch (e) { el.innerHTML = '<p style="color:var(--danger);">Gagal memuat data.</p>'; actions.style.display = 'none'; }
         }

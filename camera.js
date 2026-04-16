@@ -122,3 +122,33 @@ async function getImageDataUrlAsync(videoId) {
     if (!_cameras[videoId]) return null;
     return await waitForFrame(videoId);
 }
+
+/** Pesan untuk pengguna jika geolokasi gagal (absensi wajib lokasi). */
+function geoErrorToMessage(err) {
+    if (!err) return 'Lokasi wajib untuk absensi. Izinkan akses lokasi lalu coba lagi.';
+    if (err.code === 1) return 'Izin lokasi ditolak. Buka pengaturan situs di browser, izinkan Lokasi, lalu muat ulang halaman.';
+    if (err.code === 2) return 'Posisi tidak tersedia sementara. Periksa GPS/sinyal lalu coba lagi.';
+    if (err.code === 3) return 'Permintaan lokasi habis waktu. Coba lagi.';
+    if (err.message === 'NO_GEO') return 'Browser tidak mendukung geolokasi.';
+    return 'Lokasi wajib untuk absensi. Aktifkan izin lokasi lalu coba lagi.';
+}
+
+/**
+ * Lokasi wajib untuk absensi — gagal jika izin ditolak / GPS error.
+ * @returns {Promise<{latitude: number, longitude: number}>}
+ */
+function getLocationRequired() {
+    return new Promise(function (resolve, reject) {
+        if (!navigator.geolocation) {
+            reject(Object.assign(new Error('NO_GEO'), { code: 0 }));
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            function (p) {
+                resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude });
+            },
+            function (err) { reject(err); },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    });
+}
