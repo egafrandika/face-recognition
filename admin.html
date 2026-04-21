@@ -366,6 +366,7 @@
                 const res = await fetch('/api/v1/employees'); const data = await res.json();
                 countEl.textContent = 'Total: ' + data.total;
                 if (data.total === 0) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada karyawan.</td></tr>'; return; }
+                const isSuperAdmin = user && user.superadmin;
                 tbody.innerHTML = data.employees.map((e, i) => {
                     const nip = e.nip || e.nik || '-';
                     const tipe = e.tunjangan_tipe || 'staff';
@@ -378,7 +379,10 @@
                     const verifyBtn = pending
                         ? ' <button type="button" class="btn btn-success btn-sm" onclick="hrVerifyEmployee(' + e.id + ',\'' + esc(e.nama) + '\')" title="Verifikasi identitas"><i class="fas fa-user-check"></i></button>'
                         : '';
-                    return '<tr><td>' + (i+1) + '</td><td>' + nip + '</td><td>' + e.nama + '</td><td>' + statusCell + '</td><td>' + rp(e.gaji_pokok) + '</td><td>' + labelTunjangan(tipe) + '<br><small style="color:var(--text-light);">' + rp(tnj) + '/hari</small></td><td>' + rp(ot) + '</td><td>' + (e.created_at ? e.created_at.split(' ')[0] : '-') + '</td><td><button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(\'users\',' + e.id + ',\'Riwayat karyawan\')" title="Riwayat"><i class="fas fa-history"></i></button></td><td style="white-space:nowrap;">' + verifyBtn + ' <button class="btn btn-primary btn-sm" onclick="openEdit(' + e.id + ',\'' + esc(nip) + '\',\'' + esc(e.nama) + '\',' + e.gaji_pokok + ',\'' + esc(tipe) + '\')"><i class="fas fa-edit"></i></button> <button class="btn btn-danger btn-sm" onclick="deleteEmployee(' + e.id + ',\'' + esc(e.nama) + '\')"><i class="fas fa-trash"></i></button></td></tr>';
+                    const deleteBtn = isSuperAdmin
+                        ? ' <button class="btn btn-danger btn-sm" onclick="deleteEmployee(' + e.id + ',\'' + esc(e.nama) + '\')"><i class="fas fa-trash"></i></button>'
+                        : '';
+                    return '<tr><td>' + (i+1) + '</td><td>' + nip + '</td><td>' + e.nama + '</td><td>' + statusCell + '</td><td>' + rp(e.gaji_pokok) + '</td><td>' + labelTunjangan(tipe) + '<br><small style="color:var(--text-light);">' + rp(tnj) + '/hari</small></td><td>' + rp(ot) + '</td><td>' + (e.created_at ? e.created_at.split(' ')[0] : '-') + '</td><td><button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(\'users\',' + e.id + ',\'Riwayat karyawan\')" title="Riwayat"><i class="fas fa-history"></i></button></td><td style="white-space:nowrap;">' + verifyBtn + ' <button class="btn btn-primary btn-sm" onclick="openEdit(' + e.id + ',\'' + esc(nip) + '\',\'' + esc(e.nama) + '\',' + e.gaji_pokok + ',\'' + esc(tipe) + '\')"><i class="fas fa-edit"></i></button>' + deleteBtn + '</td></tr>';
                 }).join('');
             } catch (e) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }

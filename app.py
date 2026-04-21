@@ -124,6 +124,29 @@ def _hash(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
 
+def _user_is_superadmin(conn, user_id):
+    """True jika user_id terdaftar di tabel superadmin."""
+    if user_id is None:
+        return False
+    row = conn.execute(
+        "SELECT 1 FROM superadmin WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    return row is not None
+
+
+def _login_user_payload(conn, row):
+    """Objek user untuk respons login (manual & wajah)."""
+    nip_val = row["nip"] or row["nik"]
+    uid = row["id"]
+    return {
+        "id": uid,
+        "nip": nip_val,
+        "nama": row["nama"],
+        "role": row["role"],
+        "superadmin": _user_is_superadmin(conn, uid),
+    }
+
+
 def init_db():
     conn = get_db()
     try:
@@ -235,6 +258,21 @@ def init_db():
             "UPDATE users SET pending_hr_verification = 0 WHERE pending_hr_verification IS NULL"
         )
 
+        try:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0"
+            )
+        except sqlite3.OperationalError:
+            pass
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS superadmin (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+
         conn.execute(
             "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ppn_persen', '12')"
         )
@@ -247,6 +285,35 @@ def init_db():
             )
         elif not admin['password']:
             conn.execute("UPDATE users SET password = ? WHERE id = ?", (_hash('admin123'), admin['id']))
+
+        # Akun demo Super Admin — password diset ke super123 setiap init agar sama dengan teks di login.html.
+        super_nip = "NIP2604-001"
+        sa = conn.execute(
+            "SELECT id FROM users WHERE nip = ? OR nik = ?", (super_nip, super_nip)
+        ).fetchone()
+        if not sa:
+            conn.execute(
+                """INSERT INTO users (nik, nama, nip, role, password, gaji_pokok)
+                   VALUES (?, ?, ?, 'admin', ?, 0)""",
+                (super_nip, "Super Admin", super_nip, _hash("super123")),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET role = 'admin', password = ? WHERE id = ?",
+                (_hash("super123"), sa["id"]),
+            )
+
+        sa_row = conn.execute(
+            "SELECT id FROM users WHERE nip = ? OR nik = ?", (super_nip, super_nip)
+        ).fetchone()
+        if sa_row:
+            conn.execute(
+                "INSERT OR IGNORE INTO superadmin (user_id) VALUES (?)",
+                (sa_row["id"],),
+            )
+        conn.execute(
+            "INSERT OR IGNORE INTO superadmin (user_id) SELECT id FROM users WHERE COALESCE(is_superadmin, 0) = 1"
+        )
 
         conn.commit()
     finally:
@@ -335,11 +402,7 @@ def login_face():
                             "status": "failed",
                             "message": "Akun belum diverifikasi HR. Tunggu persetujuan HRD atau hubungi bagian personalia."
                         })
-                    nip_val = u['nip'] or u['nik']
-                    return jsonify({
-                        "status": "success",
-                        "user": {"id": u['id'], "nip": nip_val, "nama": u['nama'], "role": u['role']}
-                    })
+                    return jsonify({"status": "success", "user": _login_user_payload(conn, u)})
             return jsonify({"status": "failed", "message": "Wajah tidak terdaftar dalam sistem"})
         finally:
             conn.close()
@@ -369,11 +432,7 @@ def login_manual():
                 "status": "failed",
                 "message": "Akun belum diverifikasi HR. Tunggu persetujuan HRD."
             })
-        nip_val = user['nip'] or user['nik']
-        return jsonify({
-            "status": "success",
-            "user": {"id": user['id'], "nip": nip_val, "nama": user['nama'], "role": user['role']}
-        })
+        return jsonify({"status": "success", "user": _login_user_payload(conn, user)})
     finally:
         conn.close()
 
@@ -738,6 +797,19 @@ def delete_employee(user_id):
         actor_name = (data.get('actor_name') or '').strip() or None
         conn = get_db()
         try:
+            if not actor_id:
+                return jsonify({"status": "error", "message": "Akses ditolak."}), 403
+            actor = conn.execute(
+                "SELECT id, role FROM users WHERE id = ?", (actor_id,)
+            ).fetchone()
+            if not actor or actor["role"] != "admin":
+                return jsonify({"status": "error", "message": "Akses ditolak."}), 403
+            if not _user_is_superadmin(conn, actor_id):
+                return jsonify({
+                    "status": "error",
+                    "message": "Hanya Super Admin yang dapat menghapus data karyawan.",
+                }), 403
+
             row = conn.execute(
                 "SELECT nama, COALESCE(nip, nik) AS nip FROM users WHERE id = ? AND role = 'karyawan'",
                 (user_id,)
