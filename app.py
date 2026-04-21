@@ -9,6 +9,8 @@ import os
 import face_recognition
 from datetime import datetime
 import hashlib
+import threading
+import time
 import cloudinary
 import cloudinary.uploader
 
@@ -25,6 +27,8 @@ app = Flask(__name__)
 CORS(app)
 
 DB_PATH = os.path.join(ROOT_DIR, 'payrollface.db')
+BACKUP_DIR = os.path.join(ROOT_DIR, 'backup')
+BACKUP_INTERVAL_SEC = int(os.environ.get('BACKUP_INTERVAL_SEC', '3600'))
 _STATIC_EXT = {'.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.json'}
 JAM_KELUAR_NORMAL = "17:00:00"
 # Jam kerja efektif per bulan (pembagi upah lembur umum)
@@ -145,6 +149,88 @@ def _login_user_payload(conn, row):
         "role": row["role"],
         "superadmin": _user_is_superadmin(conn, uid),
     }
+
+
+_backup_lock = threading.Lock()
+_last_scheduled_backup_at = None
+_last_scheduled_backup_name = None
+_last_manual_backup_at = None
+_last_manual_backup_name = None
+
+
+def _ensure_backup_dir():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def _perform_database_backup(trigger):
+    """
+    Salin database aktif ke backup/ dengan sqlite3.backup (aman untuk WAL).
+    trigger: 'scheduled' | 'manual'
+    """
+    global _last_scheduled_backup_at, _last_scheduled_backup_name
+    global _last_manual_backup_at, _last_manual_backup_name
+
+    _ensure_backup_dir()
+    dest_name = f"payrollface_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    dest_path = os.path.join(BACKUP_DIR, dest_name)
+    ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    with _backup_lock:
+        src_conn = sqlite3.connect(DB_PATH, timeout=60)
+        try:
+            dest_conn = sqlite3.connect(dest_path)
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
+        finally:
+            src_conn.close()
+
+    if trigger == 'scheduled':
+        _last_scheduled_backup_at = ts
+        _last_scheduled_backup_name = dest_name
+    else:
+        _last_manual_backup_at = ts
+        _last_manual_backup_name = dest_name
+
+    return {"ok": True, "filename": dest_name, "at": ts, "trigger": trigger}
+
+
+def _list_backup_files():
+    _ensure_backup_dir()
+    out = []
+    try:
+        names = sorted(os.listdir(BACKUP_DIR), reverse=True)
+    except OSError:
+        return out
+    for name in names:
+        if not name.endswith('.db'):
+            continue
+        full = os.path.join(BACKUP_DIR, name)
+        try:
+            st = os.stat(full)
+            out.append({
+                "filename": name,
+                "size_bytes": st.st_size,
+                "modified_at": datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+            })
+        except OSError:
+            continue
+    return out
+
+
+def _hourly_backup_loop():
+    while True:
+        time.sleep(BACKUP_INTERVAL_SEC)
+        try:
+            _perform_database_backup('scheduled')
+        except Exception as e:
+            print(f"[backup] Otomatis gagal: {e}")
+
+
+def start_scheduled_database_backups():
+    t = threading.Thread(target=_hourly_backup_loop, daemon=True, name='payrollface-db-backup')
+    t.start()
 
 
 def init_db():
@@ -1096,6 +1182,60 @@ def put_settings():
         conn.close()
 
 
+def _require_superadmin_actor(actor_id):
+    """Kembalikan (True, None) atau (False, (response, status_code))."""
+    if actor_id is None or actor_id == '':
+        return False, (jsonify({"status": "error", "message": "Akses ditolak."}), 403)
+    try:
+        aid = int(actor_id)
+    except (TypeError, ValueError):
+        return False, (jsonify({"status": "error", "message": "Akses ditolak."}), 403)
+    conn = get_db()
+    try:
+        if not _user_is_superadmin(conn, aid):
+            return False, (jsonify({"status": "error", "message": "Hanya Super Admin yang dapat mengakses backup database."}), 403)
+        return True, None
+    finally:
+        conn.close()
+
+
+@app.route('/api/v1/backup/status', methods=['GET'])
+def backup_status():
+    actor_id = request.args.get('actor_user_id', type=int)
+    ok, err = _require_superadmin_actor(actor_id)
+    if not ok:
+        return err
+    return jsonify({
+        "status": "success",
+        "interval_seconds": BACKUP_INTERVAL_SEC,
+        "backup_folder": "backup",
+        "last_scheduled_at": _last_scheduled_backup_at,
+        "last_scheduled_file": _last_scheduled_backup_name,
+        "last_manual_at": _last_manual_backup_at,
+        "last_manual_file": _last_manual_backup_name,
+        "files": _list_backup_files(),
+    })
+
+
+@app.route('/api/v1/backup/run', methods=['POST'])
+def backup_run_manual():
+    data = request.json or {}
+    actor_id = data.get('actor_user_id')
+    ok, err = _require_superadmin_actor(actor_id)
+    if not ok:
+        return err
+    try:
+        r = _perform_database_backup('manual')
+        return jsonify({
+            "status": "success",
+            "message": f"Backup disimpan: {r['filename']}",
+            "filename": r["filename"],
+            "at": r["at"],
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ─── ADMIN FACE REGISTRATION ─────────────────────────────
 
 @app.route('/api/v1/admin/register-face', methods=['POST'])
@@ -1155,4 +1295,6 @@ if __name__ == '__main__':
 
     scheme = 'https' if ssl_ctx else 'http'
     print(f'Server: {scheme}://0.0.0.0:{port}/')
+    start_scheduled_database_backups()
+    print(f'Backup database otomatis setiap {BACKUP_INTERVAL_SEC}s → folder backup/')
     app.run(debug=True, host=host, port=port, ssl_context=ssl_ctx)

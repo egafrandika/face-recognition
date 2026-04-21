@@ -21,6 +21,7 @@
                 <a data-section="leave" onclick="showSection('leave',this)"><i class="fas fa-calendar-check"></i> Persetujuan Cuti</a>
                 <a data-section="payslip" onclick="showSection('payslip',this)"><i class="fas fa-file-invoice-dollar"></i> Slip Gaji</a>
                 <a data-section="attendance" onclick="showSection('attendance',this)"><i class="fas fa-user-clock"></i> Absensi HR</a>
+                <a id="nav-backup" data-section="backup" style="display:none;" onclick="showSection('backup',this)"><i class="fas fa-database"></i> Backup Database</a>
                 <div class="nav-divider"></div>
                 <a href="login.html" onclick="localStorage.clear()"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </nav>
@@ -143,6 +144,32 @@
                         <p style="font-size:0.78rem;color:var(--text-light);margin-top:6px;">Diperlukan agar bisa login & absensi dengan wajah</p>
                     </div>
                 </section>
+
+                <!-- ═══ BACKUP DATABASE (Super Admin) ═══ -->
+                <section id="section-backup" class="section">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-database"></i> Backup Database</h2>
+                        </div>
+                        <p style="color:var(--text-light);font-size:0.9rem;margin:0 0 16px 0;">
+                            Salinan aman <code>payrollface.db</code> disimpan di folder proyek <code>backup/</code>.
+                            Backup otomatis berjalan setiap <strong id="backup-interval-label">1 jam</strong> selama server aktif.
+                        </p>
+                        <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding:16px;background:var(--light);border-radius:12px;border:1px solid var(--border);">
+                            <div><span style="font-size:0.78rem;color:var(--text-light);display:block;">Otomatis terakhir</span><strong id="backup-last-sched">—</strong><br><small id="backup-last-sched-file" style="color:var(--text-light);"></small></div>
+                            <div><span style="font-size:0.78rem;color:var(--text-light);display:block;">Manual terakhir</span><strong id="backup-last-manual">—</strong><br><small id="backup-last-manual-file" style="color:var(--text-light);"></small></div>
+                        </div>
+                        <button type="button" class="btn btn-primary" id="btn-backup-now" onclick="runManualBackup()"><i class="fas fa-download"></i> Backup sekarang</button>
+                        <span id="backup-run-status" style="margin-left:12px;font-size:0.9rem;font-weight:600;"></span>
+                        <h3 style="margin:24px 0 12px;font-size:1rem;"><i class="fas fa-folder-open"></i> File backup</h3>
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th>No</th><th>Nama file</th><th>Ukuran</th><th>Diubah</th></tr></thead>
+                                <tbody id="backup-table-body"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-light);">Memuat…</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
             </div>
         </main>
     </div>
@@ -189,13 +216,17 @@
         if (!user || user.role !== 'admin') { window.location.href = 'login.html'; }
         document.getElementById('sidebar-user').textContent = user ? user.nama : 'Admin';
         document.getElementById('topbar-name').textContent = user ? user.nama : 'Admin';
+        if (user && user.superadmin) {
+            const nb = document.getElementById('nav-backup');
+            if (nb) nb.style.display = '';
+        }
 
         const now = new Date();
         const curMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
         document.getElementById('rekap-month').value = curMonth;
         document.getElementById('slip-month').value = curMonth;
 
-        const titles = { employees: 'Kelola Karyawan', rekap: 'Rekap Kehadiran', leave: 'Persetujuan Cuti', payslip: 'Slip Gaji', attendance: 'Absensi HR' };
+        const titles = { employees: 'Kelola Karyawan', rekap: 'Rekap Kehadiran', leave: 'Persetujuan Cuti', payslip: 'Slip Gaji', attendance: 'Absensi HR', backup: 'Backup Database' };
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-backdrop').classList.toggle('active'); }
         function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-backdrop').classList.remove('active'); }
@@ -214,6 +245,75 @@
             if (name === 'leave') loadLeaveRequests();
             if (name === 'payslip') loadSlipEmployees();
             if (name === 'attendance') initCamera('admin-att-video', 'att-hint');
+            if (name === 'backup') loadBackupPanel();
+        }
+
+        function fmtBytes(n) {
+            const x = Number(n) || 0;
+            if (x < 1024) return x + ' B';
+            if (x < 1048576) return (x / 1024).toFixed(1) + ' KB';
+            return (x / 1048576).toFixed(2) + ' MB';
+        }
+
+        async function loadBackupPanel() {
+            const tbody = document.getElementById('backup-table-body');
+            const st = document.getElementById('backup-run-status');
+            if (!user || !user.superadmin) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;">Akses hanya untuk Super Admin.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;"><span class="spinner"></span> Memuat…</td></tr>';
+            if (st) st.textContent = '';
+            try {
+                const res = await fetch('/api/v1/backup/status?actor_user_id=' + encodeURIComponent(user.id));
+                const data = await res.json();
+                if (data.status === 'error' || !res.ok) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--danger);">' + (data.message || 'Gagal memuat') + '</td></tr>';
+                    return;
+                }
+                const sec = data.interval_seconds != null ? data.interval_seconds : 3600;
+                const elInt = document.getElementById('backup-interval-label');
+                if (elInt) elInt.textContent = sec >= 3600 ? (sec / 3600) + ' jam' : (sec / 60) + ' menit';
+                document.getElementById('backup-last-sched').textContent = data.last_scheduled_at || 'Belum (setelah jadwal pertama)';
+                document.getElementById('backup-last-sched-file').textContent = data.last_scheduled_file ? data.last_scheduled_file : '';
+                document.getElementById('backup-last-manual').textContent = data.last_manual_at || '—';
+                document.getElementById('backup-last-manual-file').textContent = data.last_manual_file || '';
+                const files = data.files || [];
+                if (files.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-light);">Belum ada file backup.</td></tr>';
+                } else {
+                    tbody.innerHTML = files.map((f, i) =>
+                        '<tr><td>' + (i + 1) + '</td><td><code style="font-size:0.85rem;">' + escHtml(f.filename) + '</code></td><td>' + fmtBytes(f.size_bytes) + '</td><td>' + escHtml(f.modified_at || '—') + '</td></tr>'
+                    ).join('');
+                }
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--danger);">Gagal memuat data.</td></tr>';
+            }
+        }
+
+        async function runManualBackup() {
+            if (!user || !user.superadmin) return;
+            const btn = document.getElementById('btn-backup-now');
+            const st = document.getElementById('backup-run-status');
+            if (btn) { btn.disabled = true; }
+            if (st) { st.textContent = 'Memproses…'; st.style.color = 'var(--text-light)'; }
+            try {
+                const res = await fetch('/api/v1/backup/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor_user_id: user.id })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (st) { st.textContent = data.message || 'Berhasil.'; st.style.color = '#10b981'; }
+                    loadBackupPanel();
+                } else {
+                    if (st) { st.textContent = data.message || 'Gagal'; st.style.color = 'var(--danger)'; }
+                }
+            } catch (e) {
+                if (st) { st.textContent = 'Gagal menghubungi server.'; st.style.color = 'var(--danger)'; }
+            }
+            if (btn) btn.disabled = false;
         }
 
         const esc = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');

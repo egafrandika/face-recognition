@@ -22,7 +22,7 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 - **Izin Kamera & Lokasi**: Kamera wajib untuk semua alur wajah; **lokasi GPS wajib** hanya untuk **absensi** (dashboard karyawan & panel Absensi HR). Helper di `camera.js`: `getLocationRequired()`, `geoErrorToMessage()`.
 - **Pengajuan Cuti**: Formulir digital lengkap dengan upload surat dokter untuk cuti sakit.
 - **Panel Admin HRD**: Enrollment karyawan, rekap kehadiran, persetujuan cuti, slip gaji, dan absensi HR.
-- **Super Admin**: Hak khusus untuk **menghapus karyawan** di **Kelola Karyawan** (tombol hapus dan API hapus). Daftar superadmin disimpan di tabel **`superadmin`** (`user_id` → `users.id`). Akun demo **NIP2604-001** / **super123** dibuat otomatis; admin biasa (**ADMIN001**) tidak melihat tombol hapus.
+- **Super Admin**: Hak khusus untuk **menghapus karyawan** di **Kelola Karyawan** (tombol hapus dan API hapus), serta menu **Backup Database** (hanya terlihat untuk Super Admin). Daftar superadmin di tabel **`superadmin`** (`user_id` → `users.id`). File salinan **`payrollface.db`** disimpan di folder **`backup/`** (nama `payrollface_YYYYMMDD_HHMMSS.db`) dengan `sqlite3.backup`; backup **otomatis setiap 1 jam** selama server Flask jalan, plus **backup manual** dari panel. Interval bisa diubah lewat env **`BACKUP_INTERVAL_SEC`** (detik, default `3600`). Admin biasa tidak melihat menu backup.
 - **Loading Indicator**: Spinner animasi pada semua tabel dan tombol aksi saat fetching data.
 - **Responsive**: Tampilan menyesuaikan desktop, tablet, dan mobile.
 
@@ -48,13 +48,14 @@ project_skripsi/
 ├── index.html              # Halaman landing page
 ├── login.html              # Login (face recognition + manual admin)
 ├── registrasi.html         # Pendaftaran mandiri pegawai (nama + wajah, tanpa login)
-├── admin.html              # Panel HR (kelola karyawan, rekap, cuti, slip gaji, absensi HR)
+├── admin.html              # Panel HR (+ backup DB hanya Super Admin)
 ├── dashboard.html          # Dashboard karyawan (absensi, riwayat, cuti, slip gaji)
 ├── slip_gaji.html          # Halaman cetak/download slip gaji
 ├── rekap_kehadiran.html    # (opsional) Riwayat kehadiran — navigasi lama
 ├── pengajuan_cuti.html     # (opsional) Form cuti — navigasi lama
 ├── requirements.txt        # Dependensi Python
 ├── payrollface.db          # Database SQLite (auto-generated)
+├── backup/                 # Salinan DB (otomatis + manual; di-.gitignore)
 └── README.md
 ```
 
@@ -130,9 +131,23 @@ Server berjalan di **http://127.0.0.1:5000**. Database `payrollface.db` dibuat o
 | Admin HR     | `ADMIN001`     | `admin123` | Panel HR penuh; **tanpa** hapus karyawan |
 | Super Admin  | `NIP2604-001`  | `super123` | Sama seperti admin HR + **boleh hapus** karyawan |
 
-Setiap kali `app.py` dijalankan, password akun **NIP2604-001** diselaraskan ke **super123** (kredensial demo di `login.html`). Jika ingin password kustom yang tidak tertimpa, gunakan akun admin lain dan daftarkan sebagai superadmin lewat tabel `superadmin` (lihat bagian di bawah).
+Setiap kali `app.py` dijalankan, password akun **NIP2604-001** diselaraskan ke **super123** (kredensial demo di `login.html`). Jika ingin password kustom yang tidak tertimpa, gunakan akun admin lain dan daftarkan sebagai superadmin lewat tabel `superadmin` (lihat [Database Schema](#database-schema)).
 
-### 5. Buka di Browser
+**Respons login** (`/api/v1/login/manual` dan `/api/v1/login/face`) menyertakan field boolean **`superadmin`** untuk menyesuaikan UI (tombol hapus, menu backup).
+
+### 5. Backup database (opsional dibaca)
+
+| Hal | Keterangan |
+|-----|------------|
+| **Folder** | `backup/` di root proyek (otomatis dibuat). File: `payrollface_YYYYMMDD_HHMMSS.db`. |
+| **Metode** | `sqlite3.backup` — salinan konsisten meski DB memakai WAL. |
+| **Otomatis** | Thread berjalan **hanya** saat server dimulai lewat `python app.py` (bukan `flask run` kecuali Anda menambahkan pemanggilan scheduler). Interval default **3600 detik (1 jam)**. Backup **pertama** jalan setelah **satu interval** penuh sejak server menyala, lalu berulang. |
+| **Manual** | Menu **Backup Database** di `admin.html` (hanya Super Admin) atau `POST /api/v1/backup/run`. |
+| **Interval** | Variabel lingkungan **`BACKUP_INTERVAL_SEC`** (detik). Contoh PowerShell: `$env:BACKUP_INTERVAL_SEC=1800; python app.py` |
+| **Git** | Isi `backup/` diabaikan (lihat `.gitignore`). |
+| **Restore** | Tutup aplikasi, salin file backup ke nama `payrollface.db` (cadangkan dulu file lama), lalu jalankan ulang server. |
+
+### 6. Buka di Browser
 
 Buka **http://127.0.0.1:5000/** di Chrome / Edge / Firefox.
 
@@ -240,6 +255,7 @@ ngrok http 5000
 3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti. Tombol **Riwayat** menampilkan siapa yang menyetujui/menolak dan kapan (jika tercatat).
 4. **Slip Gaji** — Pilih karyawan dan bulan; rincian memuat gaji pokok, tunjangan, lembur, potongan **PPN** (sesuai persen pengaturan), dan gaji bersih.
 5. **Absensi HR** — Sama seperti karyawan: **kamera + lokasi** wajib; kedip lalu verifikasi wajah. **Daftarkan Wajah Saya** hanya memakai kedip + foto (tanpa syarat lokasi karena bukan absensi).
+6. **Backup Database** (hanya **Super Admin**) — Menu **Backup Database**: status backup otomatis/manual terakhir, daftar file di `backup/`, tombol **Backup sekarang**. Backup otomatis tiap jam berjalan selama server Flask aktif.
 
 ### Karyawan
 
@@ -284,8 +300,8 @@ ngrok http 5000
 
 | Method | Endpoint | Deskripsi |
 |--------|----------|-----------|
-| POST | `/api/v1/login/face` | Login dengan face recognition |
-| POST | `/api/v1/login/manual` | Login manual (**NIP** atau alias lama + password) |
+| POST | `/api/v1/login/face` | Login dengan face recognition; respons `user` berisi `superadmin` (boolean) |
+| POST | `/api/v1/login/manual` | Login manual (**NIP** atau alias lama + password); respons `user` berisi `superadmin` |
 | POST | `/api/v1/verify-liveness` | Absensi masuk/pulang; **wajib** `latitude` & `longitude` (izin lokasi) |
 | GET | `/api/v1/settings` | Baca `ppn_persen` (untuk slip) |
 | PUT | `/api/v1/settings` | Simpan PPN — body JSON: `ppn_persen` (0–100), `actor_user_id` (wajib, user admin) |
@@ -306,6 +322,8 @@ ngrok http 5000
 | POST | `/api/v1/leave/approve` | Setujui/tolak cuti |
 | GET | `/api/v1/payroll/<id>` | Hitung slip gaji bulanan (tunjangan, lembur, PPN, gaji bersih) |
 | POST | `/api/v1/admin/register-face` | Daftarkan wajah admin |
+| GET | `/api/v1/backup/status?actor_user_id=<id>` | Status backup + daftar file di `backup/` — **hanya Super Admin** |
+| POST | `/api/v1/backup/run` | Backup manual (`actor_user_id` di body JSON) — **hanya Super Admin** |
 
 ## Database Schema
 
@@ -316,11 +334,13 @@ Tabel utama (SQLite, auto-generated / dimigrasi saat `app.py` dijalankan):
 - **leaves** — `id`, `user_id` (FK), `jenis_cuti`, `tanggal`, `alasan`, `attachment` (URL Cloudinary), `status`
 - **change_history** — `id`, `entity` (`users` / `leaves`), `record_id`, `action`, `changed_by_user_id`, `changed_by_name`, `detail`, `created_at`
 - **app_settings** — `key`, `value` (mis. `ppn_persen` = persen PPN dari bruto slip)
-- **superadmin** — `user_id` (PRIMARY KEY, FK ke `users.id`, ON DELETE CASCADE). Isi baris = pengguna tersebut adalah Super Admin (boleh hapus karyawan). Kolom opsional `users.is_superadmin` (legacy) dipakai sekali saat migrasi ke tabel ini.
+- **superadmin** — `user_id` (PRIMARY KEY, FK ke `users.id`, ON DELETE CASCADE). Isi baris = Super Admin: boleh **hapus karyawan**, **mengakses backup** (API & menu), kolom opsional `users.is_superadmin` (legacy) dipakai sekali saat migrasi.
+
+**Folder `backup/`** — bukan tabel; berisi salinan file `payrollface.db` yang dihasilkan backup otomatis/manual.
 
 ### Menambahkan atau mencabut Super Admin (manual)
 
-Super Admin harus berupa pengguna dengan **`role` = `admin`** di tabel `users`. Setelah itu keanggotaan ditentukan oleh tabel **`superadmin`**.
+Super Admin harus berupa pengguna dengan **`role` = `admin`** di tabel `users`. Keanggotaan diatur lewat tabel **`superadmin`** (bukan kolom boolean terpisah, kecuali migrasi legacy).
 
 1. Cari `id` admin yang ingin dijadikan Super Admin:
    ```sql
@@ -337,4 +357,14 @@ Super Admin harus berupa pengguna dengan **`role` = `admin`** di tabel `users`. 
 
 Gunakan **DB Browser for SQLite**, ekstensi editor, atau `sqlite3` CLI dengan file `payrollface.db`. Setelah mengubah data, pengguna yang bersangkutan disarankan **logout dan login ulang** agar `localStorage` memuat field `superadmin` terbaru.
 
-**Catatan:** Akun demo **NIP2604-001** otomatis mendapat baris di `superadmin` saat aplikasi dijalankan (`init_db` di `app.py`).
+**Catatan:** Akun demo **NIP2604-001** otomatis mendapat baris di `superadmin` saat `init_db` dijalankan (saat impor/`python app.py`).
+
+---
+
+## Ringkasan peran
+
+| Peran | Login demo | Hapus karyawan | Menu backup |
+|-------|------------|----------------|-------------|
+| Admin HR | `ADMIN001` / `admin123` | Tidak | Tidak |
+| Super Admin | `NIP2604-001` / `super123` | Ya | Ya |
+
