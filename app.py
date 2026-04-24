@@ -923,7 +923,7 @@ def all_attendance():
     conn = get_db()
     try:
         rows = conn.execute("""
-            SELECT a.tanggal, a.jam_masuk, a.jam_keluar, a.overtime_hours,
+            SELECT a.id AS log_id, a.tanggal, a.jam_masuk, a.jam_keluar, a.overtime_hours,
                    a.latitude, a.longitude, a.foto_masuk, a.foto_keluar,
                    a.status, u.nama, COALESCE(u.nip, u.nik) AS nip
             FROM attendance_logs a JOIN users u ON a.user_id = u.id
@@ -931,6 +931,46 @@ def all_attendance():
             ORDER BY a.tanggal DESC, a.jam_masuk DESC
         """, (month,)).fetchall()
         return jsonify({"logs": [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+@app.route('/api/v1/attendance/log/<int:log_id>', methods=['DELETE'])
+def delete_attendance_log(log_id):
+    """Hapus satu baris kehadiran — hanya Super Admin (akun super123)."""
+    data = request.json or {}
+    actor_id = data.get('actor_user_id')
+    actor_name = (data.get('actor_name') or '').strip() or None
+    if actor_id is None or actor_id == '':
+        return jsonify({"status": "error", "message": "Akses ditolak."}), 403
+    try:
+        aid = int(actor_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Akses ditolak."}), 403
+    conn = get_db()
+    try:
+        if not _user_is_superadmin(conn, aid):
+            return jsonify({
+                "status": "error",
+                "message": "Hanya Super Admin (login super123) yang dapat menghapus data kehadiran.",
+            }), 403
+        row = conn.execute(
+            """SELECT a.id, a.user_id, a.tanggal, a.jam_masuk, a.jam_keluar, u.nama,
+                      COALESCE(u.nip, u.nik) AS nip
+               FROM attendance_logs a JOIN users u ON a.user_id = u.id
+               WHERE a.id = ?""",
+            (log_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "Data kehadiran tidak ditemukan."}), 404
+        detail = (
+            f"Hapus kehadiran log_id={log_id}; karyawan {row['nama']} ({row['nip']}); "
+            f"tanggal {row['tanggal']}; masuk {row['jam_masuk'] or '-'}; keluar {row['jam_keluar'] or '-'}"
+        )
+        _log_change(conn, 'attendance_logs', log_id, 'delete', aid, actor_name, detail)
+        conn.execute("DELETE FROM attendance_logs WHERE id = ?", (log_id,))
+        conn.commit()
+        return jsonify({"status": "success", "message": "Data kehadiran dihapus."})
     finally:
         conn.close()
 

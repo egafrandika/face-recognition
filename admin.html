@@ -89,8 +89,8 @@
                         </div>
                         <div class="table-wrap">
                             <table>
-                                <thead><tr><th>Tanggal</th><th>NIP</th><th>Nama</th><th>Foto Masuk</th><th>Foto Keluar</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th></tr></thead>
-                                <tbody id="rekap-table-body"><tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Pilih bulan lalu klik Tampilkan.</td></tr></tbody>
+                                <thead><tr><th>Tanggal</th><th>NIP</th><th>Nama</th><th>Foto Masuk</th><th>Foto Keluar</th><th>Masuk</th><th>Keluar</th><th>Lembur</th><th>Lokasi</th><th>Status</th><th class="rekap-super-col" style="display:none;">Aksi</th></tr></thead>
+                                <tbody id="rekap-table-body"><tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-light);">Pilih bulan lalu klik Tampilkan.</td></tr></tbody>
                             </table>
                         </div>
                     </div>
@@ -220,6 +220,7 @@
         if (user && user.superadmin) {
             const nb = document.getElementById('nav-backup');
             if (nb) nb.style.display = '';
+            document.querySelectorAll('.rekap-super-col').forEach(el => { el.style.display = 'table-cell'; });
         }
 
         const now = new Date();
@@ -524,16 +525,39 @@
         }
 
         // ─── REKAP KEHADIRAN ───
+        function rekapColspan() { return 11; }
+
+        async function deleteAttendanceLog(logId) {
+            if (!user || !user.superadmin) return;
+            if (!confirm('Yakin hapus baris kehadiran ini? Tindakan tidak dapat dibatalkan.')) return;
+            try {
+                const res = await fetch('/api/v1/attendance/log/' + logId, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor_user_id: user.id, actor_name: user.nama })
+                });
+                const r = await res.json();
+                alert(r.message || (res.ok ? 'OK' : 'Gagal'));
+                if (r.status === 'success') loadRekap();
+            } catch (e) { alert('Gagal menghubungi server.'); }
+        }
+
         async function loadRekap() {
             const tbody = document.getElementById('rekap-table-body');
             const month = document.getElementById('rekap-month').value;
+            const nc = rekapColspan();
             if (!month) { alert('Pilih bulan.'); return; }
-            tbody.innerHTML = loadingRow(10);
+            tbody.innerHTML = loadingRow(nc);
             try {
                 const res = await fetch('/api/v1/attendance/all?month=' + month); const data = await res.json();
-                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Tidak ada data kehadiran.</td></tr>'; return; }
-                tbody.innerHTML = data.logs.map(l => '<tr><td>' + l.tanggal + '</td><td>' + (l.nip || l.nik || '-') + '</td><td>' + l.nama + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + ' jam</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td></tr>').join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                if (!data.logs || data.logs.length === 0) { tbody.innerHTML = '<tr><td colspan="' + nc + '" style="text-align:center;padding:24px;color:var(--text-light);">Tidak ada data kehadiran.</td></tr>'; return; }
+                tbody.innerHTML = data.logs.map(l => {
+                    const delCell = (user && user.superadmin)
+                        ? '<td class="rekap-super-col"><button type="button" class="btn btn-danger btn-sm" onclick="deleteAttendanceLog(' + l.log_id + ')" title="Hapus"><i class="fas fa-trash"></i></button></td>'
+                        : '<td class="rekap-super-col" style="display:none"></td>';
+                    return '<tr><td>' + l.tanggal + '</td><td>' + (l.nip || l.nik || '-') + '</td><td>' + escHtml(l.nama) + '</td><td>' + fotoCell(l.foto_masuk) + '</td><td>' + fotoCell(l.foto_keluar) + '</td><td style="color:#10b981;font-weight:600;">' + (l.jam_masuk || '-') + '</td><td style="color:#f59e0b;font-weight:600;">' + (l.jam_keluar || '-') + '</td><td>' + ((l.overtime_hours || 0) > 0 ? '<span style="color:#3b82f6;font-weight:600;">' + l.overtime_hours + ' jam</span>' : '-') + '</td><td>' + locCell(l.latitude, l.longitude) + '</td><td><span class="badge hadir">' + l.status + '</span></td>' + delCell + '</tr>';
+                }).join('');
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="' + nc + '" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
         }
 
         // ─── LEAVE APPROVAL ───

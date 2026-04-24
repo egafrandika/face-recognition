@@ -367,4 +367,3 @@ Gunakan **DB Browser for SQLite**, ekstensi editor, atau `sqlite3` CLI dengan fi
 |-------|------------|----------------|-------------|
 | Admin HR | `ADMIN001` / `admin123` | Tidak | Tidak |
 | Super Admin | `NIP2604-001` / `super123` | Ya | Ya |
-
