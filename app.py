@@ -524,7 +524,7 @@ def _decode_face(image_data):
 
 
 # Sama seperti login / absensi agar perilaku konsisten
-FACE_COMPARE_TOLERANCE = 0.5
+FACE_COMPARE_TOLERANCE = 0.4
 
 
 def _find_user_by_face(conn, face_vector):
@@ -586,7 +586,7 @@ def login_face():
             ).fetchall()
             for u in users:
                 db_enc = np.array(json.loads(u['face_encoding']))
-                if face_recognition.compare_faces([db_enc], face, tolerance=0.5)[0]:
+                if face_recognition.compare_faces([db_enc], face, tolerance=FACE_COMPARE_TOLERANCE)[0]:
                     pend = u['pending_hr_verification'] if 'pending_hr_verification' in u.keys() else 0
                     if u['role'] == 'karyawan' and pend:
                         return jsonify({
@@ -671,7 +671,7 @@ def verify_absensi():
             found = None
             for u in users:
                 db_enc = np.array(json.loads(u['face_encoding']))
-                if face_recognition.compare_faces([db_enc], face, tolerance=0.5)[0]:
+                if face_recognition.compare_faces([db_enc], face, tolerance=FACE_COMPARE_TOLERANCE)[0]:
                     found = u
                     break
 

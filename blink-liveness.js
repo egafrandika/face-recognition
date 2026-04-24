@@ -109,11 +109,12 @@
 
     function waitForBlinkOnce(videoId, hintId, options) {
         options = options || {};
-        var timeoutMs = options.timeoutMs != null ? options.timeoutMs : 45000;
-        var CALIB_FRAMES = 22;
-        var DROP_RATIO = 0.82;
-        var RECOVER_RATIO = 0.84;
-        var MIN_DROP_ABS = 0.028;
+        // Param lebih longgar: kedip kecil/cepat cukup; waktu cukup panjang (mode ketat: naikkan MIN_DROP, turunkan DROP_RATIO)
+        var timeoutMs = options.timeoutMs != null ? options.timeoutMs : 60000;
+        var CALIB_FRAMES = 15;
+        var DROP_RATIO = 0.9;
+        var RECOVER_RATIO = 0.78;
+        var MIN_DROP_ABS = 0.016;
 
         return loadBlinkModelsInternal()
             .then(function () {
@@ -170,7 +171,7 @@
                                     video,
                                     new faceapi.TinyFaceDetectorOptions({
                                         inputSize: 416,
-                                        scoreThreshold: 0.38,
+                                        scoreThreshold: 0.3,
                                     })
                                 )
                                 .withFaceLandmarks(true);
@@ -197,13 +198,13 @@
                                     baseline = computeBaseline(calibSamples);
                                     if (baseline < 0.12) baseline = 0.14;
                                     if (baseline > 0.45) baseline = 0.42;
-                                    lowThreshold = Math.max(0.09, baseline * DROP_RATIO);
+                                    lowThreshold = Math.max(0.08, baseline * DROP_RATIO);
                                     if (baseline - lowThreshold < MIN_DROP_ABS) {
                                         lowThreshold = baseline - MIN_DROP_ABS;
                                     }
                                     recoverThreshold = Math.max(
-                                        lowThreshold + 0.012,
-                                        Math.min(baseline * 0.96, baseline * RECOVER_RATIO)
+                                        lowThreshold + 0.01,
+                                        Math.min(baseline * 0.97, baseline * RECOVER_RATIO)
                                     );
                                     phase = 'wait_drop';
                                     if (hintId) {
@@ -215,7 +216,7 @@
                             }
 
                             if (phase === 'wait_drop') {
-                                if (earRaw < lowThreshold && baseline - earRaw >= MIN_DROP_ABS * 0.85) {
+                                if (earRaw < lowThreshold && baseline - earRaw >= MIN_DROP_ABS * 0.6) {
                                     phase = 'wait_open';
                                     seenLowAt = Date.now();
                                     if (hintId) setHint(hintId, 'Buka mata.', '#3b82f6');
@@ -228,7 +229,7 @@
 
                             if (phase === 'wait_open') {
                                 if (earRaw >= recoverThreshold) {
-                                    if (Date.now() - seenLowAt > 45) {
+                                    if (Date.now() - seenLowAt > 35) {
                                         if (hintId) setHint(hintId, 'Selesai.', '#10b981');
                                         finish(true);
                                         return;
