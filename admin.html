@@ -22,6 +22,7 @@
                 <a data-section="payslip" onclick="showSection('payslip',this)"><i class="fas fa-file-invoice-dollar"></i> Slip Gaji</a>
                 <a data-section="attendance" onclick="showSection('attendance',this)"><i class="fas fa-user-clock"></i> Absensi HR</a>
                 <a id="nav-backup" data-section="backup" style="display:none;" onclick="showSection('backup',this)"><i class="fas fa-database"></i> Backup Database</a>
+                <a id="nav-admin-accounts" data-section="admin-accounts" style="display:none;" onclick="showSection('admin-accounts',this)"><i class="fas fa-user-cog"></i> Kelola Akun Admin</a>
                 <div class="nav-divider"></div>
                 <a href="login.html" onclick="localStorage.clear()"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </nav>
@@ -67,6 +68,10 @@
                             <input type="number" id="setting-ppn" min="0" max="100" step="0.1" value="12" title="Potongan dari penghasilan bruto bulan pada slip gaji" style="width:96px;padding:8px;border-radius:8px;border:1px solid var(--border);">
                             <button type="button" class="btn btn-primary btn-sm" id="btn-save-ppn"><i class="fas fa-save"></i> Simpan</button>
                             <span id="ppn-save-status" style="font-size:0.85rem;color:var(--text-light);"></span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                            <label for="employee-search" style="font-weight:600;font-size:0.9rem;margin:0;">Cari</label>
+                            <input type="search" id="employee-search" placeholder="Ketik NIP atau nama…" autocomplete="off" style="min-width:200px;max-width:360px;flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);" oninput="applyEmployeeFilter()">
                         </div>
                         <div class="table-wrap">
                             <table>
@@ -170,6 +175,41 @@
                         </div>
                     </div>
                 </section>
+
+                <!-- ═══ KELOLA AKUN ADMIN (Super Admin saja) ═══ -->
+                <section id="section-admin-accounts" class="section">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-user-shield"></i> Kelola Akun Admin HR &amp; Super Admin</h2>
+                        </div>
+                        <p style="font-size:0.88rem;color:var(--text-light);margin:0 0 16px;line-height:1.5;">
+                            Ubah nama tampilan dan/atau password untuk <b>Admin HR</b> (login manual NIP ADMIN001) dan <b>Super Admin</b>.
+                            Password kosong berarti tidak diubah. Hanya Super Admin yang dapat membuka menu ini.
+                            <br>Riwayat perubahan password berasal dari log audit (siapa, kapan, ringkasan).
+                        </p>
+                        <div id="admin-accounts-denied" style="display:none;padding:20px;text-align:center;color:var(--danger);">
+                            Akses ditolak. Menu ini khusus Super Admin.
+                        </div>
+                        <div id="admin-accounts-wrap" style="display:none;">
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Jenis akun</th>
+                                            <th>NIP</th>
+                                            <th>Nama</th>
+                                            <th style="min-width:260px;">Riwayat password</th>
+                                            <th>Password baru</th>
+                                            <th>Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-accounts-table-body"></tbody>
+                                </table>
+                            </div>
+                            <p id="admin-accounts-status" style="margin-top:12px;font-size:0.88rem;font-weight:600;min-height:22px;"></p>
+                        </div>
+                    </div>
+                </section>
             </div>
         </main>
     </div>
@@ -218,8 +258,10 @@
         document.getElementById('sidebar-user').textContent = user ? user.nama : 'Admin';
         document.getElementById('topbar-name').textContent = user ? user.nama : 'Admin';
         if (user && user.superadmin) {
-            const nb = document.getElementById('nav-backup');
-            if (nb) nb.style.display = '';
+            ['nav-backup', 'nav-admin-accounts'].forEach(nid => {
+                const el = document.getElementById(nid);
+                if (el) el.style.display = '';
+            });
             document.querySelectorAll('.rekap-super-col').forEach(el => { el.style.display = 'table-cell'; });
         }
 
@@ -228,7 +270,7 @@
         document.getElementById('rekap-month').value = curMonth;
         document.getElementById('slip-month').value = curMonth;
 
-        const titles = { employees: 'Kelola Karyawan', rekap: 'Rekap Kehadiran', leave: 'Persetujuan Cuti', payslip: 'Slip Gaji', attendance: 'Absensi HR', backup: 'Backup Database' };
+        const titles = { employees: 'Kelola Karyawan', rekap: 'Rekap Kehadiran', leave: 'Persetujuan Cuti', payslip: 'Slip Gaji', attendance: 'Absensi HR', backup: 'Backup Database', 'admin-accounts': 'Kelola Akun Admin' };
 
         function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebar-backdrop').classList.toggle('active'); }
         function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebar-backdrop').classList.remove('active'); }
@@ -248,6 +290,7 @@
             if (name === 'payslip') loadSlipEmployees();
             if (name === 'attendance') initCamera('admin-att-video', 'att-hint');
             if (name === 'backup') loadBackupPanel();
+            if (name === 'admin-accounts') loadAdminAccountsPanel();
         }
 
         function fmtBytes(n) {
@@ -316,6 +359,111 @@
                 if (st) { st.textContent = 'Gagal menghubungi server.'; st.style.color = 'var(--danger)'; }
             }
             if (btn) btn.disabled = false;
+        }
+
+        function formatAdminPasswordHistoryCell(a) {
+            const hist = a.password_change_history || [];
+            if (hist.length === 0) {
+                return '<p style="margin:0;font-size:0.8rem;color:var(--text-light);">Belum ada riwayat perubahan password tercatat.</p>';
+            }
+            return '<div style="max-height:220px;overflow-y:auto;font-size:0.82rem;line-height:1.45;">' + hist.slice(0, 50).map(h => {
+                const when = escHtml(String(h.created_at || ''));
+                const uid = h.changed_by_user_id != null ? escHtml(String(h.changed_by_user_id)) : '';
+                const who = escHtml((h.changed_by_name || '—').trim());
+                const det = escHtml((h.detail || '').trim() || '—');
+                const line1 = '<strong>' + when + '</strong> — diubah oleh ' + who + (uid ? ' (user ID ' + uid + ')' : '');
+                return '<div style="margin-bottom:10px;">'
+                    + '<div style="color:var(--text);">' + line1 + '</div>'
+                    + '<div style="color:var(--text-light);font-size:0.8rem;">' + det + '</div>'
+                    + '</div>';
+            }).join('') + '</div>';
+        }
+
+        function formatAdminPasswordStatusCell(a) {
+            return formatAdminPasswordHistoryCell(a);
+        }
+
+        async function loadAdminAccountsPanel() {
+            const denied = document.getElementById('admin-accounts-denied');
+            const wrap = document.getElementById('admin-accounts-wrap');
+            const tbody = document.getElementById('admin-accounts-table-body');
+            const status = document.getElementById('admin-accounts-status');
+            if (status) status.textContent = '';
+            if (!user || !user.superadmin) {
+                if (denied) denied.style.display = 'block';
+                if (wrap) wrap.style.display = 'none';
+                return;
+            }
+            if (denied) denied.style.display = 'none';
+            if (wrap) wrap.style.display = 'block';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;"><span class="spinner"></span> Memuat…</td></tr>';
+            try {
+                const res = await fetch('/api/v1/admin/admin-accounts?actor_user_id=' + encodeURIComponent(user.id));
+                const data = await res.json();
+                if (data.status === 'error' || !res.ok) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger);">' + escHtml(data.message || 'Gagal memuat') + '</td></tr>';
+                    return;
+                }
+                const acc = data.accounts || [];
+                if (acc.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-light);">Tidak ada akun admin.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = acc.map(a => {
+                    const jenis = escHtml(a.jenis || '');
+                    const nip = escHtml(a.nip || '');
+                    const namaVal = escHtml(a.nama || '');
+                    const pwInfo = formatAdminPasswordStatusCell(a);
+                    return '<tr data-admin-id="' + a.id + '"><td><span class="badge hadir">' + jenis + '</span></td><td><code>' + nip + '</code></td><td><input type="text" class="admin-acc-nama" data-id="' + a.id + '" value="' + namaVal + '" style="min-width:160px;padding:8px;border-radius:8px;border:1px solid var(--border);"></td><td style="vertical-align:top;min-width:260px;max-width:420px;">' + pwInfo + '</td><td><input type="password" class="admin-acc-pw" data-id="' + a.id + '" placeholder="(tidak diubah)" autocomplete="new-password" style="min-width:140px;padding:8px;border-radius:8px;border:1px solid var(--border);"></td><td><button type="button" class="btn btn-primary btn-sm" onclick="saveAdminAccountRow(' + a.id + ')"><i class="fas fa-save"></i> Simpan</button></td></tr>';
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger);">Gagal memuat data.</td></tr>';
+            }
+        }
+
+        async function saveAdminAccountRow(targetId) {
+            if (!user || !user.superadmin) return;
+            const status = document.getElementById('admin-accounts-status');
+            const namaEl = document.querySelector('.admin-acc-nama[data-id="' + targetId + '"]');
+            const pwEl = document.querySelector('.admin-acc-pw[data-id="' + targetId + '"]');
+            if (!namaEl) return;
+            const nama = namaEl.value.trim();
+            const newPassword = pwEl && pwEl.value ? pwEl.value : null;
+            if (!nama && !newPassword) {
+                if (status) { status.textContent = 'Isi nama atau password baru.'; status.style.color = 'var(--danger)'; }
+                return;
+            }
+            if (newPassword && newPassword.length < 4) {
+                if (status) { status.textContent = 'Password minimal 4 karakter.'; status.style.color = 'var(--danger)'; }
+                return;
+            }
+            if (status) { status.innerHTML = '<span class="spinner"></span> Menyimpan…'; status.style.color = 'var(--text-light)'; }
+            const body = { actor_user_id: user.id, actor_name: user.nama };
+            if (nama) body.nama = nama;
+            if (newPassword) body.new_password = newPassword;
+            try {
+                const res = await fetch('/api/v1/admin/admin-accounts/' + targetId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const r = await res.json();
+                if (r.status === 'success') {
+                    if (status) { status.textContent = r.message || 'Tersimpan.'; status.style.color = '#10b981'; }
+                    if (pwEl) pwEl.value = '';
+                    if (Number(targetId) === Number(user.id) && r.nama) {
+                        user.nama = r.nama;
+                        try { localStorage.setItem('payrollface_user', JSON.stringify(user)); } catch (e) {}
+                        document.getElementById('sidebar-user').textContent = user.nama;
+                        document.getElementById('topbar-name').textContent = user.nama;
+                    }
+                    loadAdminAccountsPanel();
+                } else {
+                    if (status) { status.textContent = r.message || 'Gagal menyimpan.'; status.style.color = 'var(--danger)'; }
+                }
+            } catch (e) {
+                if (status) { status.textContent = 'Gagal menghubungi server.'; status.style.color = 'var(--danger)'; }
+            }
         }
 
         const esc = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -459,6 +607,50 @@
             btn.disabled = false; btn.innerHTML = '<i class="fas fa-camera"></i> Ambil Sampel & Daftarkan';
         };
 
+        let _employeesCache = [];
+
+        function applyEmployeeFilter() {
+            const tbody = document.getElementById('employee-table-body');
+            const countEl = document.getElementById('employee-count');
+            const qEl = document.getElementById('employee-search');
+            const q = (qEl && qEl.value || '').trim().toLowerCase();
+            const list = !q ? _employeesCache.slice() : _employeesCache.filter(e => {
+                const nip = String(e.nip || e.nik || '').toLowerCase();
+                const nama = String(e.nama || '').toLowerCase();
+                return nip.includes(q) || nama.includes(q);
+            });
+            const total = _employeesCache.length;
+            if (total === 0) {
+                countEl.textContent = 'Total: 0';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada karyawan.</td></tr>';
+                return;
+            }
+            const shown = list.length;
+            countEl.textContent = 'Total: ' + total + (shown !== total ? ' — ditampilkan: ' + shown : '');
+            if (shown === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Tidak ada yang cocok dengan pencarian.</td></tr>';
+                return;
+            }
+            const isSuperAdmin = user && user.superadmin;
+            tbody.innerHTML = list.map((e, i) => {
+                const nip = e.nip || e.nik || '-';
+                const tipe = e.tunjangan_tipe || 'staff';
+                const tnj = e.tunjangan_per_hari != null ? e.tunjangan_per_hari : e.daily_rate;
+                const ot = e.tarif_lembur_per_jam != null ? e.tarif_lembur_per_jam : e.overtime_rate;
+                const pending = Number(e.pending_hr_verification) === 1;
+                const statusCell = pending
+                    ? '<span class="badge" style="background:#fef3c7;color:#92400e;">Menunggu HR</span>'
+                    : '<span class="badge hadir">Terverifikasi</span>';
+                const verifyBtn = pending
+                    ? ' <button type="button" class="btn btn-success btn-sm" onclick="hrVerifyEmployee(' + e.id + ',\'' + esc(e.nama) + '\')" title="Verifikasi identitas"><i class="fas fa-user-check"></i></button>'
+                    : '';
+                const deleteBtn = isSuperAdmin
+                    ? ' <button class="btn btn-danger btn-sm" onclick="deleteEmployee(' + e.id + ',\'' + esc(e.nama) + '\')"><i class="fas fa-trash"></i></button>'
+                    : '';
+                return '<tr><td>' + (i + 1) + '</td><td>' + nip + '</td><td>' + e.nama + '</td><td>' + statusCell + '</td><td>' + rp(e.gaji_pokok) + '</td><td>' + labelTunjangan(tipe) + '<br><small style="color:var(--text-light);">' + rp(tnj) + '/hari</small></td><td>' + rp(ot) + '</td><td>' + (e.created_at ? e.created_at.split(' ')[0] : '-') + '</td><td><button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(\'users\',' + e.id + ',\'Riwayat karyawan\')" title="Riwayat"><i class="fas fa-history"></i></button></td><td style="white-space:nowrap;">' + verifyBtn + ' <button class="btn btn-primary btn-sm" onclick="openEdit(' + e.id + ',\'' + esc(nip) + '\',\'' + esc(e.nama) + '\',' + e.gaji_pokok + ',\'' + esc(tipe) + '\')"><i class="fas fa-edit"></i></button>' + deleteBtn + '</td></tr>';
+            }).join('');
+        }
+
         // ─── EMPLOYEE TABLE ───
         async function loadEmployees() {
             const tbody = document.getElementById('employee-table-body');
@@ -466,27 +658,13 @@
             tbody.innerHTML = loadingRow(10);
             try {
                 const res = await fetch('/api/v1/employees'); const data = await res.json();
-                countEl.textContent = 'Total: ' + data.total;
-                if (data.total === 0) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-light);">Belum ada karyawan.</td></tr>'; return; }
-                const isSuperAdmin = user && user.superadmin;
-                tbody.innerHTML = data.employees.map((e, i) => {
-                    const nip = e.nip || e.nik || '-';
-                    const tipe = e.tunjangan_tipe || 'staff';
-                    const tnj = e.tunjangan_per_hari != null ? e.tunjangan_per_hari : e.daily_rate;
-                    const ot = e.tarif_lembur_per_jam != null ? e.tarif_lembur_per_jam : e.overtime_rate;
-                    const pending = Number(e.pending_hr_verification) === 1;
-                    const statusCell = pending
-                        ? '<span class="badge" style="background:#fef3c7;color:#92400e;">Menunggu HR</span>'
-                        : '<span class="badge hadir">Terverifikasi</span>';
-                    const verifyBtn = pending
-                        ? ' <button type="button" class="btn btn-success btn-sm" onclick="hrVerifyEmployee(' + e.id + ',\'' + esc(e.nama) + '\')" title="Verifikasi identitas"><i class="fas fa-user-check"></i></button>'
-                        : '';
-                    const deleteBtn = isSuperAdmin
-                        ? ' <button class="btn btn-danger btn-sm" onclick="deleteEmployee(' + e.id + ',\'' + esc(e.nama) + '\')"><i class="fas fa-trash"></i></button>'
-                        : '';
-                    return '<tr><td>' + (i+1) + '</td><td>' + nip + '</td><td>' + e.nama + '</td><td>' + statusCell + '</td><td>' + rp(e.gaji_pokok) + '</td><td>' + labelTunjangan(tipe) + '<br><small style="color:var(--text-light);">' + rp(tnj) + '/hari</small></td><td>' + rp(ot) + '</td><td>' + (e.created_at ? e.created_at.split(' ')[0] : '-') + '</td><td><button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(\'users\',' + e.id + ',\'Riwayat karyawan\')" title="Riwayat"><i class="fas fa-history"></i></button></td><td style="white-space:nowrap;">' + verifyBtn + ' <button class="btn btn-primary btn-sm" onclick="openEdit(' + e.id + ',\'' + esc(nip) + '\',\'' + esc(e.nama) + '\',' + e.gaji_pokok + ',\'' + esc(tipe) + '\')"><i class="fas fa-edit"></i></button>' + deleteBtn + '</td></tr>';
-                }).join('');
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>'; }
+                _employeesCache = data.employees || [];
+                applyEmployeeFilter();
+            } catch (e) {
+                _employeesCache = [];
+                countEl.textContent = '';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger);">Gagal memuat data.</td></tr>';
+            }
         }
 
         function openEdit(id, nip, nama, gaji, tunjanganTipe) {

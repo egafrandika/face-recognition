@@ -21,8 +21,8 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 - **Riwayat Perubahan (Audit)**: Tabel `change_history` — siapa yang mengubah data dan kapan; di panel HR tombol **Riwayat** pada **Daftar Karyawan** dan **Persetujuan Cuti** membuka modal riwayat.
 - **Izin Kamera & Lokasi**: Kamera wajib untuk semua alur wajah; **lokasi GPS wajib** hanya untuk **absensi** (dashboard karyawan & panel Absensi HR). Helper di `camera.js`: `getLocationRequired()`, `geoErrorToMessage()`.
 - **Pengajuan Cuti**: Formulir digital lengkap dengan upload surat dokter untuk cuti sakit.
-- **Panel Admin HRD**: Enrollment karyawan, rekap kehadiran, persetujuan cuti, slip gaji, dan absensi HR.
-- **Super Admin**: Hak khusus untuk **menghapus karyawan** di **Kelola Karyawan** (tombol hapus dan API hapus), serta menu **Backup Database** (hanya terlihat untuk Super Admin). Daftar superadmin di tabel **`superadmin`** (`user_id` → `users.id`). File salinan **`payrollface.db`** disimpan di folder **`backup/`** (nama `payrollface_YYYYMMDD_HHMMSS.db`) dengan `sqlite3.backup`; backup **otomatis setiap 1 jam** selama server Flask jalan, plus **backup manual** dari panel. Interval bisa diubah lewat env **`BACKUP_INTERVAL_SEC`** (detik, default `3600`). Admin biasa tidak melihat menu backup.
+- **Panel Admin HRD**: Enrollment karyawan, **Daftar Karyawan** (urut NIP, kolom **Cari** NIP/nama), rekap kehadiran, persetujuan cuti, slip gaji, dan absensi HR.
+- **Super Admin**: Hak khusus untuk **menghapus karyawan** di **Kelola Karyawan**, **menghapus baris rekap kehadiran** (tombol sampah di Rekap — hanya Super Admin), menu **Backup Database**, dan **Kelola Akun Admin** (ubah nama/password akun Admin HR & Super Admin; riwayat perubahan password dari `change_history`). Daftar superadmin di tabel **`superadmin`** (`user_id` → `users.id`). File salinan **`payrollface.db`** di folder **`backup/`** (`sqlite3.backup`); backup otomatis tiap **1 jam** (env **`BACKUP_INTERVAL_SEC`**, default `3600`) + backup manual dari panel.
 - **Loading Indicator**: Spinner animasi pada semua tabel dan tombol aksi saat fetching data.
 - **Responsive**: Tampilan menyesuaikan desktop, tablet, dan mobile.
 
@@ -34,7 +34,7 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 - **Computer Vision**: OpenCV, face_recognition, dlib
 - **Database**: SQLite (otomatis dibuat saat pertama jalan)
 - **Cloud Storage**: Cloudinary (foto absensi & lampiran cuti)
-- **Deployment**: ngrok (untuk akses publik / dari HP)
+- **Deployment**: ngrok (HTTPS publik untuk kamera dari HP). Skrip **`ngrok-fetch-patch.js`** (dimuat di halaman HTML) menambahkan header `ngrok-skip-browser-warning` pada semua `fetch` ke API agar interstitial ngrok tidak memblokir panggilan XHR (buka dokumen pertama di browser tetap bisa menampilkan peringatan ngrok sekali).
 
 ## Struktur File
 
@@ -48,7 +48,8 @@ project_skripsi/
 ├── index.html              # Halaman landing page
 ├── login.html              # Login (face recognition + manual admin)
 ├── registrasi.html         # Pendaftaran mandiri pegawai (nama + wajah, tanpa login)
-├── admin.html              # Panel HR (+ backup DB hanya Super Admin)
+├── ngrok-fetch-patch.js    # Patch fetch: header ngrok-skip-browser-warning (opsional ngrok)
+├── admin.html              # Panel HR (+ backup, kelola akun admin, hapus rekap — Super Admin)
 ├── dashboard.html          # Dashboard karyawan (absensi, riwayat, cuti, slip gaji)
 ├── slip_gaji.html          # Halaman cetak/download slip gaji
 ├── rekap_kehadiran.html    # (opsional) Riwayat kehadiran — navigasi lama
@@ -126,14 +127,18 @@ python app.py
 
 Server berjalan di **http://127.0.0.1:5000**. Database `payrollface.db` dibuat otomatis dengan akun default:
 
-| Peran        | NIP            | Password   | Keterangan |
-|--------------|----------------|------------|------------|
-| Admin HR     | `ADMIN001`     | `admin123` | Panel HR penuh; **tanpa** hapus karyawan |
-| Super Admin  | `NIP2604-001`  | `super123` | Sama seperti admin HR + **boleh hapus** karyawan |
+| Peran        | NIP            | Password bootstrap | Keterangan |
+|--------------|----------------|--------------------|------------|
+| Admin HR     | `ADMIN001`     | Lihat bawah        | Panel HR penuh; **tanpa** hapus karyawan |
+| Super Admin  | `SUPERUSER`    | Lihat bawah        | Nama tampilan **SUPER USER**; sama seperti admin HR + **boleh hapus** karyawan |
 
-Setiap kali `app.py` dijalankan, password akun **NIP2604-001** diselaraskan ke **super123** (kredensial demo di `login.html`). Jika ingin password kustom yang tidak tertimpa, gunakan akun admin lain dan daftarkan sebagai superadmin lewat tabel `superadmin` (lihat [Database Schema](#database-schema)).
+**Password bootstrap (dinamis):** set variabel lingkungan **`PAYROLLFACE_BOOTSTRAP_HR_PASSWORD`** dan **`PAYROLLFACE_BOOTSTRAP_SUPER_PASSWORD`** sebelum menjalankan server pertama kali. Jika tidak diset, dipakai nilai demo **`admin123`** / **`super123`** (hanya untuk insert pertama atau jika password HR masih kosong). Password **Super Admin yang sudah ada tidak ditimpa** saat `app.py` dijalankan ulang — ubah lewat menu **Kelola Akun Admin** (Super Admin). Admin HR tanpa password akan diisi ulang dari env/bootstrap saat init.
 
-**Respons login** (`/api/v1/login/manual` dan `/api/v1/login/face`) menyertakan field boolean **`superadmin`** untuk menyesuaikan UI (tombol hapus, menu backup).
+**Login manual:** NIP dibandingkan **tanpa membedakan huruf besar/kecil** (`ADMIN001` = `admin001`).
+
+**Migrasi data (sekali saat `init_db`):** jika ada pengguna **`role = 'admin'`** dengan NIP **`NIP2604-001`**, peran diubah menjadi **`karyawan`** (agar tampil di Daftar Karyawan), baris **`superadmin`** untuk `user_id` tersebut dihapus, lalu field payroll disinkronkan. Flag tersimpan di **`app_settings`** (`nip2604_001_demoted_from_admin`) agar tidak diulang.
+
+**Respons login** (`/api/v1/login/manual` dan `/api/v1/login/face`) menyertakan field boolean **`superadmin`** untuk menyesuaikan UI (tombol hapus, menu backup, kelola akun admin).
 
 ### 5. Backup database (opsional dibaca)
 
@@ -206,7 +211,7 @@ Buka URL `https://xxxxx-xxxxx-xxxxx.ngrok-free.dev` di browser HP atau komputer 
 | **URL berubah** | Setiap kali ngrok dimatikan dan dijalankan ulang, URL publik berubah (plan gratis). |
 | **Matikan komputer** | Jika komputer mati, Flask dan ngrok ikut mati. Jalankan ulang keduanya saat menyalakan komputer. |
 | **Urutan** | Selalu jalankan `python app.py` **duluan**, baru `ngrok http 5000`. |
-| **Visitor Warning** | Saat pertama buka URL ngrok, mungkin muncul halaman peringatan ngrok — klik **Visit Site**. |
+| **Visitor Warning** | Saat pertama buka URL ngrok, mungkin muncul halaman peringatan ngrok — klik **Visit Site**. Permintaan **`fetch`** dari halaman HTML memakai header **`ngrok-skip-browser-warning`** lewat `ngrok-fetch-patch.js`. |
 
 ### Ringkasan Command
 
@@ -246,16 +251,17 @@ ngrok http 5000
 ### Login
 
 - **Face Recognition**: Izinkan kamera, tunggu **kalibrasi mata terbuka** (hitungan frame), lalu **kedip sekali** saat diminta; setelah itu foto dikirim ke server. **Izin kamera wajib** — jika ditolak, ikuti petunjuk di browser. Akun **belum diverifikasi HR** tidak dapat login (pesan khusus).
-- **Manual (Admin)**: Toggle ke form manual. **Admin HR:** NIP `ADMIN001`, password `admin123`. **Super Admin:** NIP `NIP2604-001`, password `super123` (lihat juga kotak petunjuk di halaman login). Karyawan dengan status menunggu verifikasi tidak dapat login manual.
+- **Manual (Admin)**: Toggle ke form manual. **Admin HR:** NIP `ADMIN001` (disimpan huruf besar) — password sesuai `PAYROLLFACE_BOOTSTRAP_HR_PASSWORD` atau default demo di tabel di atas. **Super Admin:** NIP `SUPERUSER` (nama **SUPER USER**) — password awal dari `PAYROLLFACE_BOOTSTRAP_SUPER_PASSWORD` / default demo; setelah login, kelola lewat **Kelola Akun Admin**. NIP berpola `NIP2604-001` adalah **nomor karyawan**, bukan akun Super Admin. Lihat kotak petunjuk di halaman login. Karyawan dengan status menunggu verifikasi tidak dapat login manual.
 
 ### Admin HRD
 
-1. **Kelola Karyawan** — Atur **PPN slip gaji (%)** di atas tabel daftar (tombol Simpan). Daftarkan karyawan baru dengan foto wajah (setelah **verifikasi kedip**); atur **gaji pokok** dan **tipe tunjangan** (Staff / Supervisor). **NIP** dibuat otomatis; **tarif lembur** dihitung otomatis dari gaji pokok (field readonly). Wajah yang sama dengan pegawai lain **tidak dapat didaftarkan**. Untuk pegawai dari **registrasi mandiri**, gunakan **Verifikasi** agar bisa login/absensi; gunakan **Riwayat** untuk audit. **Edit** untuk semua admin; **hapus** karyawan hanya untuk pengguna yang terdaftar sebagai **Super Admin** (tombol sampah disembunyikan untuk admin biasa).
-2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan foto masuk/keluar, jam masuk/keluar, lembur, dan lokasi GPS.
+1. **Kelola Karyawan** — Atur **PPN slip gaji (%)** di atas tabel daftar (tombol Simpan). **Daftar** diurut berdasarkan **NIP naik**; gunakan kotak **Cari** untuk menyaring NIP atau nama. Daftarkan karyawan baru dengan foto wajah (setelah **verifikasi kedip**); atur **gaji pokok** dan **tipe tunjangan** (Staff / Supervisor). **NIP** dibuat otomatis; **tarif lembur** dihitung otomatis dari gaji pokok (field readonly). Wajah yang sama dengan pegawai lain **tidak dapat didaftarkan**. Untuk pegawai dari **registrasi mandiri**, gunakan **Verifikasi** agar bisa login/absensi; gunakan **Riwayat** untuk audit. **Edit** untuk semua admin; **hapus** karyawan hanya untuk pengguna yang terdaftar sebagai **Super Admin** (tombol sampah disembunyikan untuk admin biasa).
+2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan foto masuk/keluar, jam masuk/keluar, lembur, dan lokasi GPS. **Super Admin** melihat tombol **hapus** per baris (API `DELETE /api/v1/attendance/log/<id>`); Admin HR biasa tidak.
 3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti. Tombol **Riwayat** menampilkan siapa yang menyetujui/menolak dan kapan (jika tercatat).
 4. **Slip Gaji** — Pilih karyawan dan bulan; rincian memuat gaji pokok, tunjangan, lembur, potongan **PPN** (sesuai persen pengaturan), dan gaji bersih.
 5. **Absensi HR** — Sama seperti karyawan: **kamera + lokasi** wajib; kedip lalu verifikasi wajah. **Daftarkan Wajah Saya** hanya memakai kedip + foto (tanpa syarat lokasi karena bukan absensi).
 6. **Backup Database** (hanya **Super Admin**) — Menu **Backup Database**: status backup otomatis/manual terakhir, daftar file di `backup/`, tombol **Backup sekarang**. Backup otomatis tiap jam berjalan selama server Flask aktif.
+7. **Kelola Akun Admin** (hanya **Super Admin**) — Ubah nama dan/atau password untuk **Admin HR** (`ADMIN001`) dan akun **Super Admin** (`SUPERUSER`); tampilan status password (hash), cuplikan hash, dan riwayat perubahan password dari audit.
 
 ### Karyawan
 
@@ -309,11 +315,14 @@ ngrok http 5000
 | POST | `/api/v1/face/register` | Enrollment karyawan oleh HR (`nama`, `gaji_pokok`, `tunjangan_tipe`, `image`, …); tolak jika wajah duplikat |
 | POST | `/api/v1/employee/self-register` | Registrasi mandiri (`nama`, `image`); `pending_hr_verification=1`; tolak jika wajah duplikat |
 | POST | `/api/v1/employee/hr-verify/<id>` | HR memverifikasi identitas (body: `actor_user_id` admin); hanya admin |
-| GET | `/api/v1/employees` | Daftar karyawan + tunjangan, tarif lembur, status verifikasi |
+| GET | `/api/v1/employees` | Daftar karyawan + tunjangan, tarif lembur, status verifikasi (urut NIP ASC) |
 | GET | `/api/v1/employee/data/<id>` | Data & riwayat kehadiran karyawan |
 | PUT | `/api/v1/employee/update/<id>` | Edit data (`nama`, `gaji_pokok`, `tunjangan_tipe`, …) |
 | DELETE | `/api/v1/employee/delete/<id>` | Hapus karyawan — **hanya Super Admin** (body JSON: `actor_user_id`, `actor_name`; pelaku harus ada di tabel `superadmin`) |
-| GET | `/api/v1/attendance/all` | Rekap kehadiran semua karyawan (HR) |
+| GET | `/api/v1/attendance/all` | Rekap kehadiran semua karyawan (HR); respons berisi `log_id` untuk hapus |
+| DELETE | `/api/v1/attendance/log/<id>` | Hapus satu baris kehadiran — **hanya Super Admin** (body: `actor_user_id`, `actor_name`) |
+| GET | `/api/v1/admin/admin-accounts?actor_user_id=<id>` | Daftar akun `role=admin` + riwayat password — **hanya Super Admin** |
+| PUT | `/api/v1/admin/admin-accounts/<id>` | Ubah nama/password akun admin — **hanya Super Admin** (body: `actor_user_id`, `nama`, `new_password`, …) |
 | GET | `/api/v1/history?entity=users&record_id=<id>` atau `entity=leaves` | Riwayat perubahan untuk karyawan atau cuti |
 | POST | `/api/v1/leave/request` | Ajukan cuti |
 | POST | `/api/v1/leave/cancel` | Batalkan pengajuan cuti |
@@ -333,7 +342,7 @@ Tabel utama (SQLite, auto-generated / dimigrasi saat `app.py` dijalankan):
 - **attendance_logs** — `id`, `user_id` (FK), `tanggal`, `jam_masuk`, `jam_keluar`, `overtime_hours`, `latitude`, `longitude`, `foto_masuk`, `foto_keluar`, `status`
 - **leaves** — `id`, `user_id` (FK), `jenis_cuti`, `tanggal`, `alasan`, `attachment` (URL Cloudinary), `status`
 - **change_history** — `id`, `entity` (`users` / `leaves`), `record_id`, `action`, `changed_by_user_id`, `changed_by_name`, `detail`, `created_at`
-- **app_settings** — `key`, `value` (mis. `ppn_persen` = persen PPN dari bruto slip)
+- **app_settings** — `key`, `value` (mis. `ppn_persen` = persen PPN dari bruto slip; `nip2604_001_demoted_from_admin` = flag migrasi admin→karyawan untuk NIP `NIP2604-001`)
 - **superadmin** — `user_id` (PRIMARY KEY, FK ke `users.id`, ON DELETE CASCADE). Isi baris = Super Admin: boleh **hapus karyawan**, **mengakses backup** (API & menu), kolom opsional `users.is_superadmin` (legacy) dipakai sekali saat migrasi.
 
 **Folder `backup/`** — bukan tabel; berisi salinan file `payrollface.db` yang dihasilkan backup otomatis/manual.
@@ -356,14 +365,11 @@ Super Admin harus berupa pengguna dengan **`role` = `admin`** di tabel `users`. 
    ```
 
 Gunakan **DB Browser for SQLite**, ekstensi editor, atau `sqlite3` CLI dengan file `payrollface.db`. Setelah mengubah data, pengguna yang bersangkutan disarankan **logout dan login ulang** agar `localStorage` memuat field `superadmin` terbaru.
-
-**Catatan:** Akun demo **NIP2604-001** otomatis mendapat baris di `superadmin` saat `init_db` dijalankan (saat impor/`python app.py`).
-
 ---
 
 ## Ringkasan peran
 
-| Peran | Login demo | Hapus karyawan | Menu backup |
-|-------|------------|----------------|-------------|
-| Admin HR | `ADMIN001` / `admin123` | Tidak | Tidak |
-| Super Admin | `NIP2604-001` / `super123` | Ya | Ya |
+| Peran | Login (NIP / password) | Hapus karyawan | Menu backup |
+|-------|------------------------|----------------|-------------|
+| Admin HR | `ADMIN001` + bootstrap HR (env atau demo) | Tidak | Tidak |
+| Super Admin | `SUPERUSER` + bootstrap Super (env atau demo) | Ya | Ya |

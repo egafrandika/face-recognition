@@ -36,6 +36,19 @@ JAM_KERJA_BULAN_PEMBAGI = 173
 TUNJANGAN_STAFF_PER_HARI = 25_000
 TUNJANGAN_SUPERVISOR_PER_HARI = 35_000
 
+
+def _bootstrap_hr_password():
+    """Password awal Admin HR (insert pertama / jika password kosong). Override: PAYROLLFACE_BOOTSTRAP_HR_PASSWORD."""
+    v = (os.environ.get("PAYROLLFACE_BOOTSTRAP_HR_PASSWORD") or "").strip()
+    return v or "admin123"
+
+
+def _bootstrap_super_password():
+    """Password awal Super Admin (hanya saat insert akun baru). Override: PAYROLLFACE_BOOTSTRAP_SUPER_PASSWORD."""
+    v = (os.environ.get("PAYROLLFACE_BOOTSTRAP_SUPER_PASSWORD") or "").strip()
+    return v or "super123"
+
+
 def _get_setting(conn, key, default=None):
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
     if not row:
@@ -363,34 +376,99 @@ def init_db():
             "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('ppn_persen', '12')"
         )
 
-        admin = conn.execute("SELECT id, password FROM users WHERE nik = 'ADMIN001' OR nip = 'ADMIN001'").fetchone()
+        hr_pw = _bootstrap_hr_password()
+        hr_nip = "ADMIN001"
+
+        admin = conn.execute(
+            """
+            SELECT id, password FROM users
+            WHERE UPPER(COALESCE(TRIM(nik), '')) = ? OR UPPER(COALESCE(TRIM(nip), '')) = ?
+            """,
+            (hr_nip, hr_nip),
+        ).fetchone()
+
+        if not admin:
+            prev002 = conn.execute(
+                """
+                SELECT id, password FROM users
+                WHERE UPPER(COALESCE(TRIM(nik), '')) = 'ADMIN002'
+                   OR UPPER(COALESCE(TRIM(nip), '')) = 'ADMIN002'
+                """
+            ).fetchone()
+            if prev002:
+                conn.execute(
+                    "UPDATE users SET nik = ?, nip = ? WHERE id = ?",
+                    (hr_nip, hr_nip, prev002["id"]),
+                )
+                admin = conn.execute(
+                    """
+                    SELECT id, password FROM users
+                    WHERE UPPER(COALESCE(TRIM(nik), '')) = ? OR UPPER(COALESCE(TRIM(nip), '')) = ?
+                    """,
+                    (hr_nip, hr_nip),
+                ).fetchone()
+
         if not admin:
             conn.execute(
                 "INSERT INTO users (nik, nama, nip, role, password, gaji_pokok) VALUES (?, ?, ?, ?, ?, ?)",
-                ('ADMIN001', 'Admin HRD', 'ADMIN001', 'admin', _hash('admin123'), 0)
+                (hr_nip, "Admin HRD", hr_nip, "admin", _hash(hr_pw), 0),
             )
-        elif not admin['password']:
-            conn.execute("UPDATE users SET password = ? WHERE id = ?", (_hash('admin123'), admin['id']))
+            admin = conn.execute(
+                """
+                SELECT id, password FROM users
+                WHERE UPPER(COALESCE(TRIM(nik), '')) = ? OR UPPER(COALESCE(TRIM(nip), '')) = ?
+                """,
+                (hr_nip, hr_nip),
+            ).fetchone()
 
-        # Akun demo Super Admin — password diset ke super123 setiap init agar sama dengan teks di login.html.
-        super_nip = "NIP2604-001"
+        if admin:
+            conn.execute(
+                "UPDATE users SET nik = ?, nip = ? WHERE id = ?",
+                (hr_nip, hr_nip, admin["id"]),
+            )
+        if admin and not admin["password"]:
+            conn.execute("UPDATE users SET password = ? WHERE id = ?", (_hash(hr_pw), admin["id"]))
+
+        # NIP2604-001 adalah pola NIP karyawan; jangan pakai sebagai akun Super Admin.
+        # Cabut saja hak superadmin dari baris yang kebetulan punya NIP itu (data user tetap utuh).
+        nip_karyawan_demo = "NIP2604-001"
+        for r in conn.execute(
+            """
+            SELECT id FROM users
+            WHERE UPPER(COALESCE(TRIM(nip), '')) = ? OR UPPER(COALESCE(TRIM(nik), '')) = ?
+            """,
+            (nip_karyawan_demo, nip_karyawan_demo),
+        ).fetchall():
+            conn.execute("DELETE FROM superadmin WHERE user_id = ?", (r["id"],))
+
+        super_key = "SUPERUSER"
+        super_nama = "SUPER USER"
+        super_pw = _bootstrap_super_password()
         sa = conn.execute(
-            "SELECT id FROM users WHERE nip = ? OR nik = ?", (super_nip, super_nip)
+            """
+            SELECT id FROM users
+            WHERE UPPER(COALESCE(TRIM(nip), '')) = ? OR UPPER(COALESCE(TRIM(nik), '')) = ?
+            """,
+            (super_key, super_key),
         ).fetchone()
         if not sa:
             conn.execute(
                 """INSERT INTO users (nik, nama, nip, role, password, gaji_pokok)
                    VALUES (?, ?, ?, 'admin', ?, 0)""",
-                (super_nip, "Super Admin", super_nip, _hash("super123")),
+                (super_key, super_nama, super_key, _hash(super_pw)),
             )
         else:
             conn.execute(
-                "UPDATE users SET role = 'admin', password = ? WHERE id = ?",
-                (_hash("super123"), sa["id"]),
+                "UPDATE users SET nik = ?, nip = ?, nama = ?, role = 'admin' WHERE id = ?",
+                (super_key, super_key, super_nama, sa["id"]),
             )
 
         sa_row = conn.execute(
-            "SELECT id FROM users WHERE nip = ? OR nik = ?", (super_nip, super_nip)
+            """
+            SELECT id FROM users
+            WHERE UPPER(COALESCE(TRIM(nip), '')) = ? OR UPPER(COALESCE(TRIM(nik), '')) = ?
+            """,
+            (super_key, super_key),
         ).fetchone()
         if sa_row:
             conn.execute(
@@ -400,6 +478,33 @@ def init_db():
         conn.execute(
             "INSERT OR IGNORE INTO superadmin (user_id) SELECT id FROM users WHERE COALESCE(is_superadmin, 0) = 1"
         )
+
+        # Satu kali: pegawai NIP2604-001 yang masih role admin (bekas) → karyawan (tampil di Daftar Karyawan).
+        mig_001 = conn.execute(
+            "SELECT 1 FROM app_settings WHERE key = 'nip2604_001_demoted_from_admin'"
+        ).fetchone()
+        if not mig_001:
+            conn.execute(
+                """
+                UPDATE users SET role = 'karyawan', pending_hr_verification = 0
+                WHERE role = 'admin'
+                  AND (UPPER(COALESCE(TRIM(nik), '')) = 'NIP2604-001'
+                   OR UPPER(COALESCE(TRIM(nip), '')) = 'NIP2604-001')
+                """
+            )
+            conn.execute(
+                """
+                DELETE FROM superadmin WHERE user_id IN (
+                    SELECT id FROM users
+                    WHERE UPPER(COALESCE(TRIM(nik), '')) = 'NIP2604-001'
+                       OR UPPER(COALESCE(TRIM(nip), '')) = 'NIP2604-001'
+                )
+                """
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('nip2604_001_demoted_from_admin', '1')"
+            )
+            _sync_karyawan_payroll_fields(conn)
 
         conn.commit()
     finally:
@@ -500,13 +605,17 @@ def login_face():
 def login_manual():
     data = request.json
     ident = (data.get('nip') or data.get('nik') or '').strip()
+    if not ident:
+        return jsonify({"status": "failed", "message": "NIP wajib diisi"})
+    ident_key = ident.upper()
     pw = data.get('password', '')
     conn = get_db()
     try:
         user = conn.execute(
             """SELECT id, nip, nik, nama, role, password, pending_hr_verification
-               FROM users WHERE nip = ? OR nik = ?""",
-            (ident, ident)
+               FROM users
+               WHERE UPPER(COALESCE(TRIM(nip), '')) = ? OR UPPER(COALESCE(TRIM(nik), '')) = ?""",
+            (ident_key, ident_key),
         ).fetchone()
         if not user:
             return jsonify({"status": "failed", "message": "NIP tidak ditemukan"})
@@ -786,7 +895,8 @@ def list_employees():
             """SELECT id, COALESCE(NULLIF(TRIM(nip), ''), nik) AS nip, nama,
                       gaji_pokok, tunjangan_tipe, daily_rate, overtime_rate,
                       pending_hr_verification, created_at
-               FROM users WHERE role = 'karyawan' ORDER BY id DESC"""
+               FROM users WHERE role = 'karyawan'
+               ORDER BY COALESCE(NULLIF(TRIM(nip), ''), nik) ASC, id ASC"""
         ).fetchall()
         out = []
         for r in rows:
@@ -952,7 +1062,7 @@ def delete_attendance_log(log_id):
         if not _user_is_superadmin(conn, aid):
             return jsonify({
                 "status": "error",
-                "message": "Hanya Super Admin (login super123) yang dapat menghapus data kehadiran.",
+                "message": "Hanya Super Admin yang dapat menghapus data kehadiran.",
             }), 403
         row = conn.execute(
             """SELECT a.id, a.user_id, a.tanggal, a.jam_masuk, a.jam_keluar, u.nama,
@@ -1233,7 +1343,7 @@ def _require_superadmin_actor(actor_id):
     conn = get_db()
     try:
         if not _user_is_superadmin(conn, aid):
-            return False, (jsonify({"status": "error", "message": "Hanya Super Admin yang dapat mengakses backup database."}), 403)
+            return False, (jsonify({"status": "error", "message": "Hanya Super Admin yang dapat mengakses fitur ini."}), 403)
         return True, None
     finally:
         conn.close()
@@ -1274,6 +1384,134 @@ def backup_run_manual():
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _admin_password_change_history(conn, user_id, limit=40):
+    """Riwayat change_history yang menyebut pembaruan password untuk user admin."""
+    rows = conn.execute(
+        """
+        SELECT created_at, changed_by_user_id, changed_by_name, detail
+        FROM change_history
+        WHERE entity = 'users' AND record_id = ? AND action = 'update'
+          AND LOWER(IFNULL(detail, '')) LIKE '%password%'
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    return [dict(x) for x in rows]
+
+
+@app.route('/api/v1/admin/admin-accounts', methods=['GET'])
+def list_admin_accounts():
+    """Daftar akun role admin (HR & Super Admin) — hanya Super Admin."""
+    actor_id = request.args.get('actor_user_id', type=int)
+    ok, err = _require_superadmin_actor(actor_id)
+    if not ok:
+        return err
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT u.id, u.nama, COALESCE(NULLIF(TRIM(u.nip), ''), u.nik) AS nip,
+                   u.password AS password_hash,
+                   CASE WHEN EXISTS (SELECT 1 FROM superadmin s WHERE s.user_id = u.id)
+                        THEN 1 ELSE 0 END AS is_superadmin
+            FROM users u
+            WHERE u.role = 'admin'
+            ORDER BY is_superadmin DESC, u.id
+            """
+        ).fetchall()
+        out = []
+        for r in rows:
+            ph = r["password_hash"] if "password_hash" in r.keys() else None
+            has_pw = bool(ph and str(ph).strip())
+            hash_preview = None
+            if has_pw:
+                h = str(ph).strip()
+                hash_preview = (h[:18] + "…") if len(h) > 18 else h
+            hist = _admin_password_change_history(conn, r["id"])
+            last_pw_at = hist[0]["created_at"] if hist else None
+            out.append({
+                "id": r["id"],
+                "nama": r["nama"],
+                "nip": r["nip"],
+                "jenis": "Super Admin" if r["is_superadmin"] else "Admin HR",
+                "has_password": has_pw,
+                "password_plaintext_note": (
+                    "Teks password asli tidak pernah disimpan di server. "
+                    "Yang tersimpan hanya hash SHA-256 (satu arah); tidak dapat ditampilkan atau dikembalikan seperti saat diketik."
+                ),
+                "password_hash_preview": hash_preview,
+                "password_last_changed_at": last_pw_at,
+                "password_change_history": hist,
+            })
+        return jsonify({"status": "success", "accounts": out})
+    finally:
+        conn.close()
+
+
+@app.route('/api/v1/admin/admin-accounts/<int:target_id>', methods=['PUT'])
+def update_admin_account(target_id):
+    """Ubah nama dan/atau password akun admin — hanya Super Admin."""
+    data = request.json or {}
+    actor_id = data.get('actor_user_id')
+    actor_name = (data.get('actor_name') or '').strip() or None
+    ok, err = _require_superadmin_actor(actor_id)
+    if not ok:
+        return err
+    aid = int(actor_id)
+
+    new_nama = (data.get("nama") or "").strip()
+    new_pw = data.get("new_password")
+    if new_pw is not None and not isinstance(new_pw, str):
+        new_pw = None
+    if new_pw is not None:
+        new_pw = new_pw.strip()
+        if new_pw == "":
+            new_pw = None
+
+    if new_pw is not None and len(new_pw) < 4:
+        return jsonify({"status": "error", "message": "Password minimal 4 karakter."}), 400
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, nama, role FROM users WHERE id = ?", (target_id,)
+        ).fetchone()
+        if not row or row["role"] != "admin":
+            return jsonify({"status": "error", "message": "Akun admin tidak ditemukan."}), 404
+
+        old_nama = row["nama"]
+        if new_nama == old_nama:
+            new_nama = ""
+        if not new_nama and not new_pw:
+            return jsonify({"status": "error", "message": "Tidak ada perubahan (nama sama dan password kosong)."}), 400
+
+        nama_final = new_nama if new_nama else old_nama
+        parts = []
+        if new_nama and new_nama != old_nama:
+            parts.append(f"nama: {old_nama} → {new_nama}")
+        if new_pw is not None:
+            parts.append("password: diperbarui")
+
+        if new_pw is not None:
+            conn.execute(
+                "UPDATE users SET nama = ?, password = ? WHERE id = ? AND role = 'admin'",
+                (nama_final, _hash(new_pw), target_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET nama = ? WHERE id = ? AND role = 'admin'",
+                (nama_final, target_id),
+            )
+
+        detail = "; ".join(parts) if parts else "Perbarui data akun admin"
+        _log_change(conn, "users", target_id, "update", aid, actor_name, detail)
+        conn.commit()
+        return jsonify({"status": "success", "message": "Akun admin berhasil diperbarui.", "nama": nama_final})
+    finally:
+        conn.close()
 
 
 # ─── ADMIN FACE REGISTRATION ─────────────────────────────
