@@ -250,7 +250,6 @@
         </div>
     </div>
 
-    <script src="ngrok-fetch-patch.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="camera.js"></script>
     <script src="blink-liveness.js"></script>
@@ -841,8 +840,8 @@
 
         async function registerAdminFace() {
             const status = document.getElementById('admin-att-status');
-            status.textContent = 'Verifikasi kedip...'; status.style.color = '#3b82f6';
             if (!isCameraReady('admin-att-video')) { alertCameraRequired(); status.textContent = 'Izin kamera diperlukan.'; status.style.color = '#ef4444'; return; }
+            status.textContent = 'Verifikasi kedip...'; status.style.color = '#3b82f6';
             try {
                 await waitForBlinkOnce('admin-att-video', 'att-hint');
             } catch (e) {

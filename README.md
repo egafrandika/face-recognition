@@ -4,8 +4,7 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 
 ## Fitur Utama
 
-- **Face Recognition Login**: Login dan absensi menggunakan verifikasi wajah real-time.
-- **Liveness — Kedip Mata (client-side)**: Sebelum setiap pengambilan foto wajah (login, absensi karyawan & HR, enrollment, registrasi mandiri, daftar wajah admin), browser meminta **satu kali kedip** menggunakan **face-api.js** (CDN) + landmark mata (EAR relatif terhadap baseline). Memerlukan **koneksi internet** pada pertama kali untuk memuat pustaka dan bobot model; setelah itu bisa dibuffer oleh browser.
+- **Face Recognition Login**: Verifikasi wajah di server. **Liveness (kedip) di browser**: sebelum foto dikirim, `blink-liveness.js` memuat **face-api.js** (CDN) + model; pengguna melewati **satu kali kedip** (ear landmark). Butuh **internet** saat pertama memuat pustaka/bobot (bisa di-cache).
 - **NIP (Nomor Induk Pegawai)**: Nomor pegawai otomatis dengan format `NIP{YY}{MM}-{urutan}` (contoh: `NIP2604-001`); tidak diisi manual oleh HRD.
 - **Registrasi Mandiri (`registrasi.html`)**: Pegawai dapat mendaftar sendiri dengan **nama + sampel wajah** (tanpa login). Data masuk ke daftar karyawan HR dengan status **menunggu verifikasi**; **login dan absensi diblokir** sampai HR menyetujui identitas lewat tombol **Verifikasi** di panel admin.
 - **Verifikasi HR**: Kolom **Status HR** di daftar karyawan (Menunggu / Terverifikasi); HR melengkapi gaji, tunjangan, dll. setelah atau sebelum verifikasi sesuai kebijakan.
@@ -29,12 +28,12 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 ## Teknologi
 
 - **Frontend**: HTML5, CSS3, JavaScript (Vanilla), Font Awesome
-- **Liveness (browser)**: [face-api.js](https://github.com/justadudewhohacks/face-api.js) (TinyFaceDetector + landmark 68 tiny), dimuat dari CDN; logika kedip di `blink-liveness.js` (kalibrasi singkat + ambang EAR relatif).
+- **Liveness (browser)**: [face-api.js](https://github.com/justadudewhohacks/face-api.js) (TinyFaceDetector + landmark) — pemuatan dari CDN; logika di `blink-liveness.js` (kalibrasi + EAR, kedip sekali).
 - **Backend**: Python 3.x, Flask
 - **Computer Vision**: OpenCV, face_recognition, dlib
 - **Database**: SQLite (otomatis dibuat saat pertama jalan)
 - **Cloud Storage**: Cloudinary (foto absensi & lampiran cuti)
-- **Deployment**: ngrok (HTTPS publik untuk kamera dari HP). Skrip **`ngrok-fetch-patch.js`** (dimuat di halaman HTML) menambahkan header `ngrok-skip-browser-warning` pada semua `fetch` ke API agar interstitial ngrok tidak memblokir panggilan XHR (buka dokumen pertama di browser tetap bisa menampilkan peringatan ngrok sekali).
+- **Deployment**: **ngrok** (HTTPS publik untuk kamera dari HP) — baca bagian *Deploy dengan ngrok*; pengguna cukup mengklik **Visit Site** pada peringatan pembuka bila muncul.
 
 ## Struktur File
 
@@ -42,13 +41,12 @@ Sistem informasi absensi dan payroll yang mengintegrasikan verifikasi biometrik 
 project_skripsi/
 ├── app.py                  # Backend Flask (API server)
 ├── camera.js               # Kamera, capture, geolokasi wajib absensi (`getLocationRequired`)
-├── blink-liveness.js       # Verifikasi kedip sebelum capture (face-api + EAR)
+├── blink-liveness.js       # Verifikasi kedip sebelum capture wajah (face-api, CDN)
 ├── test_api.py             # Skrip uji API (register / absensi; kirim koordinat dummy)
 ├── style.css               # Stylesheet global + responsive
 ├── index.html              # Halaman landing page
 ├── login.html              # Login (face recognition + manual admin)
 ├── registrasi.html         # Pendaftaran mandiri pegawai (nama + wajah, tanpa login)
-├── ngrok-fetch-patch.js    # Patch fetch: header ngrok-skip-browser-warning (opsional ngrok)
 ├── admin.html              # Panel HR (+ backup, kelola akun admin, hapus rekap — Super Admin)
 ├── dashboard.html          # Dashboard karyawan (absensi, riwayat, cuti, slip gaji)
 ├── slip_gaji.html          # Halaman cetak/download slip gaji
@@ -66,7 +64,7 @@ project_skripsi/
 
 - **Python 3.10+** sudah terinstal
 - **pip** (Python package manager)
-- Koneksi internet (untuk instalasi library Python pertama kali; halaman dengan kamera juga memuat face-api + model kedip dari CDN saat pertama dipakai)
+- Koneksi internet (untuk `pip install` pustaka Python; halaman dengan liveness memuat **face-api.js + model** dari CDN saat **pertama** dipakai)
 
 ### 2. Instalasi Dependensi
 
@@ -211,7 +209,7 @@ Buka URL `https://xxxxx-xxxxx-xxxxx.ngrok-free.dev` di browser HP atau komputer 
 | **URL berubah** | Setiap kali ngrok dimatikan dan dijalankan ulang, URL publik berubah (plan gratis). |
 | **Matikan komputer** | Jika komputer mati, Flask dan ngrok ikut mati. Jalankan ulang keduanya saat menyalakan komputer. |
 | **Urutan** | Selalu jalankan `python app.py` **duluan**, baru `ngrok http 5000`. |
-| **Visitor Warning** | Saat pertama buka URL ngrok, mungkin muncul halaman peringatan ngrok — klik **Visit Site**. Permintaan **`fetch`** dari halaman HTML memakai header **`ngrok-skip-browser-warning`** lewat `ngrok-fetch-patch.js`. |
+| **Visitor Warning** | Saat pertama buka URL ngrok, mungkin muncul halaman peringatan — klik **Visit Site** untuk melanjutkan. |
 
 ### Ringkasan Command
 
@@ -243,29 +241,29 @@ ngrok http 5000
 
 ### Registrasi mandiri (pegawai)
 
-1. Buka **Registrasi Pegawai**, isi **nama lengkap**, izinkan **kamera**, tunggu kalibrasi lalu **kedip sekali** saat diminta, lalu **Kirim Pendaftaran**.
+1. Buka **Registrasi Pegawai**, isi **nama lengkap**, izinkan **kamera**; ikuti **satu kali kedip** lalu **Kirim Pendaftaran**.
 2. Jika wajah **sudah terdaftar** pada akun lain, sistem menolak dan menampilkan pesan (beserta NIP pemilik wajah yang ada).
 3. Setelah berhasil, catat **NIP** yang ditampilkan; **login dan absensi belum aktif** sampai HR memverifikasi.
 4. HR memeriksa di **Kelola Karyawan** → kolom **Status HR** → tombol **Verifikasi** (ikon centang) jika status masih menunggu.
 
 ### Login
 
-- **Face Recognition**: Izinkan kamera, tunggu **kalibrasi mata terbuka** (hitungan frame), lalu **kedip sekali** saat diminta; setelah itu foto dikirim ke server. **Izin kamera wajib** — jika ditolak, ikuti petunjuk di browser. Akun **belum diverifikasi HR** tidak dapat login (pesan khusus).
+- **Face Recognition**: Izinkan kamera, pilih **Login dengan Wajah**; lulus **verifikasi kedip** lalu foto dikirim. **Izin kamera wajib**. Akun **belum diverifikasi HR** tidak dapat login (pesan khusus).
 - **Manual (Admin)**: Toggle ke form manual. **Admin HR:** NIP `ADMIN001` (disimpan huruf besar) — password sesuai `PAYROLLFACE_BOOTSTRAP_HR_PASSWORD` atau default demo di tabel di atas. **Super Admin:** NIP `SUPERUSER` (nama **SUPER USER**) — password awal dari `PAYROLLFACE_BOOTSTRAP_SUPER_PASSWORD` / default demo; setelah login, kelola lewat **Kelola Akun Admin**. NIP berpola `NIP2604-001` adalah **nomor karyawan**, bukan akun Super Admin. Lihat kotak petunjuk di halaman login. Karyawan dengan status menunggu verifikasi tidak dapat login manual.
 
 ### Admin HRD
 
-1. **Kelola Karyawan** — Atur **PPN slip gaji (%)** di atas tabel daftar (tombol Simpan). **Daftar** diurut berdasarkan **NIP naik**; gunakan kotak **Cari** untuk menyaring NIP atau nama. Daftarkan karyawan baru dengan foto wajah (setelah **verifikasi kedip**); atur **gaji pokok** dan **tipe tunjangan** (Staff / Supervisor). **NIP** dibuat otomatis; **tarif lembur** dihitung otomatis dari gaji pokok (field readonly). Wajah yang sama dengan pegawai lain **tidak dapat didaftarkan**. Untuk pegawai dari **registrasi mandiri**, gunakan **Verifikasi** agar bisa login/absensi; gunakan **Riwayat** untuk audit. **Edit** untuk semua admin; **hapus** karyawan hanya untuk pengguna yang terdaftar sebagai **Super Admin** (tombol sampah disembunyikan untuk admin biasa).
+1. **Kelola Karyawan** — Atur **PPN slip gaji (%)** di atas tabel daftar (tombol Simpan). **Daftar** diurut berdasarkan **NIP naik**; gunakan kotak **Cari** untuk menyaring NIP atau nama. **Daftarkan** karyawan: foto wajah setelah **verifikasi kedip**. Atur **gaji pokok** dan **tipe tunjangan** (Staff / Supervisor). **NIP** dibuat otomatis; **tarif lembur** dihitung otomatis dari gaji pokok (field readonly). Wajah yang sama dengan pegawai lain **tidak dapat didaftarkan**. Untuk pegawai dari **registrasi mandiri**, gunakan **Verifikasi** agar bisa login/absensi; gunakan **Riwayat** untuk audit. **Edit** untuk semua admin; **hapus** karyawan hanya untuk pengguna yang terdaftar sebagai **Super Admin** (tombol sampah disembunyikan untuk admin biasa).
 2. **Rekap Kehadiran** — Lihat absensi seluruh karyawan per bulan, lengkap dengan foto masuk/keluar, jam masuk/keluar, lembur, dan lokasi GPS. **Super Admin** melihat tombol **hapus** per baris (API `DELETE /api/v1/attendance/log/<id>`); Admin HR biasa tidak.
 3. **Persetujuan Cuti** — Setujui atau tolak pengajuan cuti. Tombol **Riwayat** menampilkan siapa yang menyetujui/menolak dan kapan (jika tercatat).
 4. **Slip Gaji** — Pilih karyawan dan bulan; rincian memuat gaji pokok, tunjangan, lembur, potongan **PPN** (sesuai persen pengaturan), dan gaji bersih.
-5. **Absensi HR** — Sama seperti karyawan: **kamera + lokasi** wajib; kedip lalu verifikasi wajah. **Daftarkan Wajah Saya** hanya memakai kedip + foto (tanpa syarat lokasi karena bukan absensi).
+5. **Absensi HR** — Sama seperti karyawan: **kamera + lokasi** wajib; liveness (kedip) lalu **verify** wajah. **Daftarkan Wajah Saya**: kedip + foto (tanpa lokasi).
 6. **Backup Database** (hanya **Super Admin**) — Menu **Backup Database**: status backup otomatis/manual terakhir, daftar file di `backup/`, tombol **Backup sekarang**. Backup otomatis tiap jam berjalan selama server Flask aktif.
 7. **Kelola Akun Admin** (hanya **Super Admin**) — Ubah nama dan/atau password untuk **Admin HR** (`ADMIN001`) dan akun **Super Admin** (`SUPERUSER`); tampilan status password (hash), cuplikan hash, dan riwayat perubahan password dari audit.
 
 ### Karyawan
 
-1. **Absensi** — Pilih Masuk/Pulang; izin **lokasi** dan **kamera** wajib aktif; ikuti **kalibrasi** lalu **kedip sekali**, kemudian foto dikirim. Akun yang **belum diverifikasi HR** tidak dapat absensi.
+1. **Absensi** — Pilih Masuk/Pulang; **lokasi** + **kamera**; verifikasi **kedip** lalu foto wajah dikirim. Akun **belum diverifikasi HR** tidak dapat absensi.
 2. **Riwayat Kehadiran** — Tabel harian: foto masuk/keluar, jam, lembur, lokasi, dan keterangan.
 3. **Pengajuan Cuti** — Isi formulir, upload surat dokter jika sakit (tersimpan di Cloudinary).
 4. **Slip Gaji** — Pilih bulan; tampilan mencakup tunjangan, lembur (sesuai rumus), potongan **PPN**, dan gaji bersih.
@@ -293,14 +291,13 @@ ngrok http 5000
 { "ppn_persen": 12, "actor_user_id": <id_admin_dari_localStorage> }
 ```
 
-### Verifikasi kedip (liveness)
+### Verifikasi kedip (liveness, browser)
 
 | Hal | Keterangan |
 |-----|------------|
-| **Urutan** | Tahan mata terbuka saat kalibrasi (jangan kedip) → setelah teks berubah, kedip **sekali** (tutup lalu buka). |
-| **Internet** | Pertama kali per sesi/penyegaran cache, browser mengunduh face-api + model; pastikan koneksi stabil. |
-| **Cahaya & jarak** | Hindari backlight kuat; hadapkan wajah lurus ke kamera, tidak terlalu jauh. |
-| **Penyetelan** | Konstanta ambang ada di `blink-liveness.js` (kalibrasi, rasio turun/naik). |
+| **Alur** | Kalibrasi wajah singkat (tetap fokus), lalu **kedip sekali**; selesai → foto diambil. |
+| **Internet** | `face-api.js` + model (CDN) saat **pertama** dipakai per sisi/penyegaran cache. |
+| **File** | Konstanta deteksi: `blink-liveness.js` |
 
 ## API Endpoints
 
